@@ -1,1 +1,1 @@
-# P2I-GAN-benchmark
+# P2I-GAN Benchmark
