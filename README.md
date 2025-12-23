@@ -94,13 +94,23 @@ weights
    |- README.md
 ```
 
+### Inference with Fake Data
+
+Since we cannot share the original Nimrod (radar) or MIDAS (gauge) datasets with you, we provide a small fake dataset instead. You can just use code here to see the result.
+
+```bash
+python scripts/infer.py \
+  --config p2igan_bench/config/p2igan_baseline_eval.json \
+  --experiment-name p2igan-eval-fakedata
+
+
 ### 🚀 Training
 
 
 ## Dataset preparation
 
 The training and test are split into two different path with h5 files inside, with shape (HxWxT = 128x128x16).
-In our research, we use Nimrod and 
+In our research, we use Nimrod (radar) or MIDAS (gauge), please use your own dataset here.
 The `datasets` directory structure will be arranged as: (**Note**: please check it carefully)
 
 ```
