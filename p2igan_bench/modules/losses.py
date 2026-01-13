@@ -30,17 +30,22 @@ __all__ = [
 
 
 class ReconstructionLoss:
-    """Weighted combination of hole and valid region reconstruction loss."""
+    """Weighted reconstruction loss: pixel pool + temporal regularization."""
 
-    def __init__(self, hole_weight: float = 1.0, valid_weight: float = 1.0):
-        self.hole_weight = hole_weight
-        self.valid_weight = valid_weight
+    def __init__(self, k1_alpha: float = 0.0):
+        self.k1_alpha = k1_alpha
 
-    def __call__(self, prediction: torch.Tensor, target: torch.Tensor, mask: torch.Tensor):
-        hole = F.l1_loss(prediction * mask, target * mask)
-        valid = F.l1_loss(prediction * (1 - mask), target * (1 - mask))
-        loss = self.hole_weight * hole + self.valid_weight * valid
-        return loss, {"hole": float(hole.detach()), "valid": float(valid.detach())}
+    def __call__(self, prediction: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None):
+        # 主體使用 weighted L1；mask 參數保留以維持呼叫介面，但不再分 hole/valid。
+        pool_loss = weighted_l1_distance(prediction, target)
+        pred_diff = compute_forward_difference(prediction)
+        true_diff = compute_forward_difference(target)
+        pred_prob = softmax_temperature(pred_diff, 0.1)
+        true_prob = softmax_temperature(true_diff, 0.1)
+        reg_loss = kl_divergence(pred_prob, true_prob)
+
+        loss = pool_loss + self.k1_alpha * reg_loss
+        return loss, {"pool": float(pool_loss.detach()), "reg": float(reg_loss.detach())}
 
 
 def transform(x: torch.Tensor) -> torch.Tensor:
@@ -204,12 +209,19 @@ class AdversarialLoss(nn.Module):
 
     def forward(self, outputs: torch.Tensor, is_real: bool, is_disc: bool | None = None) -> torch.Tensor:
         if self.loss_type == "hinge":
+            if is_disc is None:
+                raise ValueError("`is_disc` must be set when using hinge loss.")
+
             if is_disc:
                 if is_real:
-                    outputs = -outputs
-                return self.criterion(1 + outputs).mean()
-            return (-outputs).mean()
+                    return self.criterion(1 - outputs).mean()
+                else:
+                    return self.criterion(1 + outputs).mean()
+            else:
+                # generator loss: -D(G(z))
+                return (-outputs).mean()
 
+        # NSGAN / LSGAN
         labels = (self.real_label if is_real else self.fake_label).expand_as(outputs)
         return self.criterion(outputs, labels)
 

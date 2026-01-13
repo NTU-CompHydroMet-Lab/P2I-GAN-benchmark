@@ -7,7 +7,6 @@ from typing import Dict, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.cuda import amp
 
 from .deconv_pytorch import DOConv2d, DOConv2d_eval
 
@@ -273,7 +272,7 @@ def idw_3d_knn(points_xyz, values, out_shape, k=8, rho=2.0, tau=1e-3, chunk=1638
 
     use_cuda_amp = use_amp and device.type == "cuda"
 
-    with amp.autocast(device_type="cuda", enabled=use_cuda_amp):
+    with torch.amp.autocast("cuda", enabled=use_cuda_amp):
         for start in range(0, Q, chunk):
             end = min(start + chunk, Q)
             gp = gp_all[start:end]

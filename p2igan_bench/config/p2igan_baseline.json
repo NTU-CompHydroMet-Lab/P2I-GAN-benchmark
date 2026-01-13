@@ -2,11 +2,9 @@
   "seed": 2024,
   "device": "cuda:0",
   "save_dir": "weights/p2igan_baseline",
-
-  
   "experiment_name": "p2igan-baseline",
   "run_name": "debug-run-001",
-  "tracking_uri": null,
+  "description": "P2I-GAN baseline found artificat, try to fix, test without gan",
   
   "model": {
     "name": "p2igan",
@@ -33,11 +31,11 @@
         "file": "/home/NAS/homes/brick-10015/INGAN/core/rain_gauge_mask_1024_train.txt"
       }
     },
-    "test": {
+    "valid": {
       "data_root": "/home/NAS/homes/brick-10015/Nimrod_2d_data/NIMROD_Train_datasets_sti/test",
       "shuffle": false
     },
-    "valid": {
+    "test": {
       "data_root": "/home/NAS/homes/brick-10015/Nimrod_2d_data/NIMROD_Train_datasets_sti/val",
       "w": 128,
       "h": 128,
@@ -54,12 +52,12 @@
   "loss": {
     "hole_weight": 1.0,
     "valid_weight": 1.0,
-    "adversarial_weight": 0.5,
+    "adversarial_weight": 0.1,
     "fractal_weight": 0.0,
     "k1_weight": 0.0005,
     "temp_weight": 0.0,
     "gan_loss": "hinge",
-    "use_gan": 1,
+    "use_gan": 0,
     "use_fractal": 0
   },
   "train": {
@@ -72,13 +70,17 @@
       "d2glr": 1.0
     },
     "batch_size": 12,
-    "num_workers": 2,
-    "verbosity": 2,
+    "num_workers": 4,
+    "pin_memory": true,
+    "persistent_workers": true,
+    "prefetch_factor": 2,
     "log_step": 100,
     "save_freq": 5000,
     "valid_freq": 10000,
     "iterations": 200000,
     "niter": 20000,
-    "niter_steady": 50000
+    "niter_steady": 50000,
+    "use_validation": true,
+    "use_test": false
   }
 }

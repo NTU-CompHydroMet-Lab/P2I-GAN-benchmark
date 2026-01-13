@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
@@ -13,6 +14,9 @@ import numpy as np
 import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+import matplotlib.cm as cm
+from PIL import Image, ImageDraw, ImageFont
+from torchvision.utils import make_grid, save_image
 from p2igan_bench.data.dataloader import P2IDataModule
 from p2igan_bench.models import build_discriminator, build_generator
 from p2igan_bench.modules import ReconstructionLoss, gan_loss
@@ -30,6 +34,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--experiment-name", type=str, default=None, help="MLflow experiment name")
     parser.add_argument("--run-name", type=str, default=None, help="MLflow run name")
     parser.add_argument("--tracking-uri", type=str, default=None, help="Optional MLflow tracking URI")
+    parser.add_argument("--log-level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING)")
+    parser.add_argument(
+        "--run-validation",
+        dest="run_validation",
+        action="store_true",
+        help="Enable running validation each epoch (overrides config).",
+    )
+    parser.add_argument(
+        "--skip-validation",
+        dest="run_validation",
+        action="store_false",
+        help="Skip validation during training (overrides config).",
+    )
+    parser.set_defaults(run_validation=None)
+    parser.add_argument(
+        "--run-test",
+        dest="run_test",
+        action="store_true",
+        help="Run test evaluation after training (overrides config).",
+    )
+    parser.add_argument(
+        "--skip-test",
+        dest="run_test",
+        action="store_false",
+        help="Skip test evaluation after training (overrides config).",
+    )
+    parser.set_defaults(run_test=None)
     return parser.parse_args()
 
 
@@ -70,11 +101,23 @@ class Trainer:
         seed_everything(cfg.get("seed", 42))
         self.device = torch.device(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
 
+        logging.info("Initializing data module...")
         self.data_module = P2IDataModule(cfg)
         self.train_loader = self.data_module.train_dataloader()
         self.val_loader = self.data_module.val_dataloader()
         self.test_loader = self.data_module.test_dataloader()
+        train_cfg = cfg.get("train", {})
+        self.run_validation = bool(train_cfg.get("use_validation", True))
+        self.run_test = bool(train_cfg.get("use_test", True))
+        logging.info(
+            "Data loaders ready | train=%s, val=%s, test=%s",
+            len(self.train_loader) if self.train_loader is not None else 0,
+            len(self.val_loader) if self.val_loader is not None else 0,
+            len(self.test_loader) if self.test_loader is not None else 0,
+        )
+        self.train_steps_per_epoch = max(1, len(self.train_loader))
 
+        logging.info("Building models...")
         self.generator = build_generator(cfg).to(self.device)
         self.discriminator = build_discriminator(cfg).to(self.device) if cfg["loss"].get("use_gan", 0) else None
 
@@ -93,11 +136,10 @@ class Trainer:
             )
 
         self.rec_loss = ReconstructionLoss(
-            hole_weight=cfg["loss"].get("hole_weight", 1.0),
-            valid_weight=cfg["loss"].get("valid_weight", 1.0),
+            k1_alpha=cfg["loss"].get("k1_weight", 0.0),
         )
         self.use_gan = bool(cfg["loss"].get("use_gan", 0))
-        self.gan_loss_type = cfg["loss"].get("gan_loss", "nsgan")
+        self.gan_loss_type = cfg["loss"].get("gan_loss", "hinge")
         self.gan_real_label = cfg["loss"].get("target_real_label", 1.0)
         self.gan_fake_label = cfg["loss"].get("target_fake_label", 0.0)
 
@@ -119,9 +161,22 @@ class Trainer:
             self.max_steps = self.max_epochs * max(1, len(self.train_loader))
 
         self.best_val = float("inf")
+        self.test_interval = int(train_cfg.get("test_interval", 20))
+        self.last_rec_loss = 0.0
+        self.last_adv_loss = 0.0
+        self.last_dis_loss = 0.0
         metric_cfg = MetricConfig()
-        self.val_metrics = RainfallMetricSuite(metric_cfg)
-        self.test_metrics = RainfallMetricSuite(metric_cfg)
+        self.val_metrics = RainfallMetricSuite(metric_cfg).to(self.device)
+        self.test_metrics = RainfallMetricSuite(metric_cfg).to(self.device)
+
+    def _log_gpu_stats(self) -> None:
+        if self.device.type != "cuda" or not torch.cuda.is_available():
+            return
+        alloc = torch.cuda.memory_allocated(self.device) / 1e6
+        reserved = torch.cuda.memory_reserved(self.device) / 1e6
+        logging.info("GPU mem | allocated=%.1fMB reserved=%.1fMB", alloc, reserved)
+        mlflow.log_metric("gpu/allocated_mb", alloc, step=self.global_step)
+        mlflow.log_metric("gpu/reserved_mb", reserved, step=self.global_step)
 
     def train(self) -> None:
         experiment_name = self.cfg.get("experiment_name")
@@ -132,26 +187,39 @@ class Trainer:
         with mlflow.start_run(run_name=run_name):
             mlflow.log_params(flatten_dict(self.cfg))
             for epoch in range(1, self.max_epochs + 1):
+                logging.info("Epoch %d/%d starting...", epoch, self.max_epochs)
                 train_loss = self._train_one_epoch(epoch)
                 mlflow.log_metric("train/loss", train_loss, step=self.global_step)
+                mlflow.log_metric("train/rec_loss_epoch", self.last_rec_loss, step=self.global_step)
+                if self.use_gan:
+                    mlflow.log_metric("train/adv_loss_epoch", self.last_adv_loss, step=self.global_step)
+                    mlflow.log_metric("train/dis_loss_epoch", self.last_dis_loss, step=self.global_step)
+                logging.info("Epoch %d completed | train_loss=%.4f | global_step=%d", epoch, train_loss, self.global_step)
+                self._log_examples(self.train_loader, prefix="train", epoch=epoch, max_batches=1, samples_per_batch=1)
 
-                if self.val_loader is not None:
-                    val_results = self.evaluate(self.val_loader, self.val_metrics)
-                    for key, value in val_results.items():
-                        mlflow.log_metric(f"val/{key}", value, step=self.global_step)
-                    if val_results.get("loss", float("inf")) < self.best_val:
-                        self.best_val = val_results["loss"]
-                        checkpoint = self.save_dir / "best.pt"
-                        self._save_checkpoint(checkpoint, epoch)
-                        mlflow.log_artifact(str(checkpoint))
+                if self.run_validation and self.val_loader is not None:
+                    logging.info("Running validation...")
+                    val_loss = self._evaluate_rec_loss(self.val_loader)
+                    mlflow.log_metric("val/loss", val_loss, step=self.global_step)
+                    logging.info("Validation done | val_loss=%.4f", val_loss)
+
+                   # 2) 每次都存最新版 latest.pt（覆蓋）
+                latest_ckpt = self.save_dir / "latest.pt"
+                self._save_checkpoint(latest_ckpt, epoch)
+                mlflow.log_artifact(str(latest_ckpt))
+                
+                if val_loss < self.best_val:
+                    self.best_val = val_loss
+                    checkpoint = self.save_dir / "best.pt"
+                    self._save_checkpoint(checkpoint, epoch)
+                    mlflow.log_artifact(str(checkpoint))
+                    logging.info("New best model saved at %s (val_loss=%.4f)", checkpoint, self.best_val)
+                self._log_examples(self.val_loader, prefix="val", epoch=epoch)
 
                 if self.global_step >= self.max_steps:
+                    logging.info("Reached max steps (%d). Stopping training.", self.max_steps)
                     break
-
-            if self.test_loader is not None:
-                test_results = self.evaluate(self.test_loader, self.test_metrics)
-                for key, value in test_results.items():
-                    mlflow.log_metric(f"test/{key}", value, step=self.global_step)
+    
 
     def _train_one_epoch(self, epoch: int) -> float:
         self.generator.train()
@@ -159,35 +227,71 @@ class Trainer:
             self.discriminator.train()
 
         running_loss = 0.0
+        rec_running = 0.0
+        adv_running = 0.0
+        dis_running = 0.0
         steps = 0
+        progress_interval = max(1, self.train_steps_per_epoch // 20)
 
         for batch in self.train_loader:
-            frames, masked_frames, masks = self._prepare_batch(batch)
 
+            frames, masked_frames, masks = self._prepare_batch(batch)
             preds = self.generator(masked_frames, masks)
             loss_g, loss_dict = self.rec_loss(preds, frames, masks)
+            rec_loss_val = float(loss_g.detach())
+            rec_running += rec_loss_val
+            adv_loss_val = 0.0
+            dis_loss_val = 0.0
+
+            if steps == 0:
+                logging.info(
+                    "Batch shapes | frames=%s masked=%s masks=%s preds=%s",
+                    tuple(frames.shape),
+                    tuple(masked_frames.shape),
+                    tuple(masks.shape),
+                    tuple(preds.shape),
+                )
 
             if self.use_gan and self.discriminator is not None:
+
+                for p in self.discriminator.parameters():
+                    p.requires_grad_(True)
+
                 logits_fake = self.discriminator(preds.detach())
                 logits_real = self.discriminator(frames)
-                loss_d = gan_loss(
-                    logits_real,
-                    True,
-                    loss_type=self.gan_loss_type,
-                    is_disc=True,
-                    target_real_label=self.gan_real_label,
-                    target_fake_label=self.gan_fake_label,
-                ) + gan_loss(
-                    logits_fake,
-                    False,
-                    loss_type=self.gan_loss_type,
-                    is_disc=True,
-                    target_real_label=self.gan_real_label,
-                    target_fake_label=self.gan_fake_label,
-                )
+                loss_d = (
+                    gan_loss(
+                        logits_real,
+                        True,
+                        loss_type=self.gan_loss_type,
+                        is_disc=True,
+                        target_real_label=self.gan_real_label,
+                        target_fake_label=self.gan_fake_label,
+                    )
+                    + gan_loss(
+                        logits_fake,
+                        False,
+                        loss_type=self.gan_loss_type,
+                        is_disc=True,
+                        target_real_label=self.gan_real_label,
+                        target_fake_label=self.gan_fake_label,
+                    )
+                ) * 0.5
+                if steps == 0:
+                    logging.info(
+                        "Disc step | logits_real=%s logits_fake=%s loss_d=%.4f",
+                        tuple(logits_real.shape),
+                        tuple(logits_fake.shape),
+                        float(loss_d.detach()),
+                    )
                 self.opt_d.zero_grad()
                 loss_d.backward()
+                if steps == 0:
+                    logging.info("Disc backward done (step=%d)", self.global_step)
                 self.opt_d.step()
+
+                for p in self.discriminator.parameters():
+                    p.requires_grad_(False)
 
                 logits_fake_for_g = self.discriminator(preds)
                 adv_loss = gan_loss(
@@ -197,8 +301,9 @@ class Trainer:
                     is_disc=False,
                     target_real_label=self.gan_real_label,
                     target_fake_label=self.gan_fake_label,
-                ) * self.cfg["loss"].get("adversarial_weight", 0.5)
+                ) * self.cfg["loss"].get("adversarial_weight", 0.01)
                 loss_g = loss_g + adv_loss
+                adv_loss_val = float(adv_loss.detach())
             else:
                 loss_d = None
 
@@ -206,29 +311,63 @@ class Trainer:
             loss_g.backward()
             self.opt_g.step()
 
+            if self.use_gan and self.discriminator is not None:
+                for p in self.discriminator.parameters():
+                    p.requires_grad_(True)
+                    
             running_loss += float(loss_g.detach())
+            adv_running += adv_loss_val
+            dis_running += float(loss_d.detach()) if loss_d is not None else 0.0
             steps += 1
             self.global_step += 1
 
+            if steps % progress_interval == 0 or steps == self.train_steps_per_epoch:
+                pct = steps / self.train_steps_per_epoch
+                bar_len = 20
+                filled = int(bar_len * pct)
+                bar = "|" * filled + "." * (bar_len - filled)
+                logging.info(
+                    "Epoch %d/%d |%s| %.1f%% (step %d/%d)",
+                    epoch,
+                    self.max_epochs,
+                    bar,
+                    pct * 100,
+                    steps,
+                    self.train_steps_per_epoch,
+                )
+
             if self.global_step % self.log_every == 0:
                 mlflow.log_metric("train/step_loss", float(loss_g.detach()), step=self.global_step)
+                mlflow.log_metric("train/rec_loss_step", rec_loss_val, step=self.global_step)
+                if self.use_gan:
+                    mlflow.log_metric("train/adv_loss_step", adv_loss_val, step=self.global_step)
+                    if loss_d is not None:
+                        mlflow.log_metric("train/dis_loss_step", float(loss_d.detach()), step=self.global_step)
                 for key, value in loss_dict.items():
                     mlflow.log_metric(f"train/{key}", value, step=self.global_step)
+                logging.info(
+                    "Epoch %d | step %d/%d | loss=%.4f",
+                    epoch,
+                    self.global_step,
+                    self.max_steps,
+                    float(loss_g.detach()),
+                )
+                self._log_gpu_stats()
 
             if self.global_step >= self.max_steps:
                 break
 
+        self.last_rec_loss = rec_running / max(1, steps)
+        self.last_adv_loss = adv_running / max(1, steps)
+        self.last_dis_loss = dis_running / max(1, steps)
         return running_loss / max(1, steps)
 
-    def evaluate(self, loader: Optional[DataLoader], metrics: RainfallMetricSuite) -> Dict[str, float]:
+    def _evaluate_rec_loss(self, loader: Optional[DataLoader]) -> float:
         if loader is None:
-            return {}
-
+            return 0.0
         self.generator.eval()
-        metrics.reset()
         total_loss = 0.0
         batches = 0
-
         with torch.no_grad():
             for batch in loader:
                 frames, masked_frames, masks = self._prepare_batch(batch)
@@ -236,11 +375,78 @@ class Trainer:
                 loss, _ = self.rec_loss(preds, frames, masks)
                 total_loss += float(loss.detach())
                 batches += 1
-                metrics.update(preds, frames)
+        return total_loss / max(1, batches)
 
-        results = metrics.compute()
-        results["loss"] = total_loss / max(1, batches)
-        return results
+    def _log_examples(
+        self,
+        loader: Optional[DataLoader],
+        prefix: str,
+        epoch: int,
+        max_batches: int = 5,
+        samples_per_batch: int = 1,
+    ) -> None:
+        if loader is None:
+            return
+        self.generator.eval()
+        save_dir = self.save_dir / "artifacts"
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        for b_idx, batch in zip(range(max_batches), loader):
+            frames, masked_frames, masks = self._prepare_batch(batch)
+            with torch.no_grad():
+                preds = self.generator(masked_frames, masks)
+
+            num = min(samples_per_batch, frames.size(0))
+            for idx in range(num):
+                gt = frames[idx]  # [T, C, H, W]
+                pd = preds[idx].clamp(0, 1)
+
+                gt_color, gt_stats = self._colorize_sequence(gt)
+                pd_color, pd_stats = self._colorize_sequence(pd)
+
+                seq = torch.cat([gt_color, pd_color], dim=0)
+                grid = make_grid(seq, nrow=gt.shape[0], padding=2)
+                out_path = save_dir / f"{prefix}_epoch{epoch}_batch{b_idx}_ex{idx}.png"
+                save_image(grid, out_path)
+                self._annotate_image(
+                    out_path,
+                    f"GT min/mean/max: {gt_stats[0]:.3f}/{gt_stats[1]:.3f}/{gt_stats[2]:.3f} | "
+                    f"Pred min/mean/max: {pd_stats[0]:.3f}/{pd_stats[1]:.3f}/{pd_stats[2]:.3f} | cmap=viridis",
+                )
+                mlflow.log_artifact(str(out_path))
+
+    def _colorize_sequence(self, seq: torch.Tensor):
+        # seq: [T, C, H, W]
+        t, c, h, w = seq.shape
+        stats = (
+            float(seq.min().detach()),
+            float(seq.mean().detach()),
+            float(seq.max().detach()),
+        )
+        out_frames = []
+        cmap = cm.get_cmap("viridis")
+        for i in range(t):
+            frame = seq[i]
+            if frame.shape[0] == 1:
+                frame = frame[0]
+            else:
+                frame = frame.mean(dim=0)
+            np_frame = frame.detach().cpu().numpy()
+            vmin, vmax = np_frame.min(), np_frame.max()
+            norm = (np_frame - vmin) / (vmax - vmin + 1e-6)
+            colored = cmap(norm)[..., :3]  # HWC
+            out_frames.append(torch.from_numpy(colored).permute(2, 0, 1))
+        return torch.stack(out_frames, dim=0), stats
+
+    def _annotate_image(self, path: Path, text: str) -> None:
+        try:
+            img = Image.open(path).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            font = ImageFont.load_default()
+            draw.text((5, 5), text, fill=(255, 255, 255), font=font)
+            img.save(path)
+        except Exception:
+            return
 
     def _prepare_batch(self, batch: Iterable[torch.Tensor]):
         frames, masked_frames, masks = batch
@@ -262,21 +468,32 @@ class Trainer:
         torch.save(state, path)
 
 
-def main() -> None:
-    args = parse_args()
-    config = load_config(args.config)
-    if args.experiment_name:
-        config["experiment_name"] = args.experiment_name
-    if args.run_name:
-        config["run_name"] = args.run_name
-    if args.tracking_uri:
-        mlflow.set_tracking_uri(args.tracking_uri)
+def main(args: Optional[argparse.Namespace] = None) -> None:
+    parsed = args or parse_args()
+    logging.info("Loading config from %s", parsed.config)
+    config = load_config(parsed.config)
+    train_cfg = config.setdefault("train", {})
+    if parsed.experiment_name:
+        config["experiment_name"] = parsed.experiment_name
+    if parsed.run_name:
+        config["run_name"] = parsed.run_name
+    if parsed.tracking_uri:
+        mlflow.set_tracking_uri(parsed.tracking_uri)
     elif "MLFLOW_TRACKING_URI" in os.environ:
         mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
+    if parsed.run_validation is not None:
+        train_cfg["use_validation"] = bool(parsed.run_validation)
+    if parsed.run_test is not None:
+        train_cfg["use_test"] = bool(parsed.run_test)
 
     trainer = Trainer(config)
     trainer.train()
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+    main(args)

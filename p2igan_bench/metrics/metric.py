@@ -126,7 +126,7 @@ class CategoricalMetrics(Metric):
             denom = (misses + false) * (false + correct) + (hits + misses) * (misses + correct)
             hss = 2 * (hits * correct - misses * false) / (denom + EPS)
 
-            prefix = f"cat@{float(thr):.2f}"
+            prefix = f"cat_thr{float(thr):.2f}"
             metrics[f"{prefix}/pod"] = float(pod)
             metrics[f"{prefix}/far"] = float(far)
             metrics[f"{prefix}/csi"] = float(csi)
@@ -179,7 +179,7 @@ class FractionalSkillScoreMetric(Metric):
                 if self.counts[ti, si] == 0:
                     continue
                 avg_score = self.score_sum[ti, si] / self.counts[ti, si]
-                metrics[f"fss@{float(thr):.2f}x{int(scale)}"] = float(avg_score)
+                metrics[f"fss_thr{float(thr):.2f}_s{int(scale)}"] = float(avg_score)
         return metrics
 
 
@@ -199,6 +199,14 @@ class RainfallMetricSuite:
         self.regression = RegressionMetrics(apply_transform=cfg.apply_transform, data_range=cfg.data_range)
         self.categorical = CategoricalMetrics(cfg.thresholds)
         self.fss = FractionalSkillScoreMetric(cfg.thresholds, cfg.scales)
+        self.device: Optional[torch.device] = None
+
+    def to(self, device: torch.device):
+        self.device = device
+        self.regression = self.regression.to(device)
+        self.categorical = self.categorical.to(device)
+        self.fss = self.fss.to(device)
+        return self
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         self.regression.update(preds, target)
@@ -216,6 +224,9 @@ class RainfallMetricSuite:
         self.regression.reset()
         self.categorical.reset()
         self.fss.reset()
+        if self.device is not None:
+            # torchmetrics resets states to defaults on CPU; move them back.
+            self.to(self.device)
 
 
 __all__ = [

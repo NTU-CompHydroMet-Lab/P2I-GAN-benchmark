@@ -5,7 +5,6 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.cuda import amp
 
 from p2igan_bench.modules.layer import (
     BaseNetwork,
@@ -83,7 +82,8 @@ class P2IGenerator(BaseNetwork):
         x_4 = self.downsample(x_2)
         x_8 = self.downsample(x_4)
 
-        with amp.autocast(enabled=False):
+        use_amp = masked_frames.device.type == "cuda"
+        with torch.amp.autocast("cuda", enabled=use_amp):
             x_2 = x_2.float()
             x_4 = x_4.float()
             x_8 = x_8.float()
@@ -108,7 +108,7 @@ class P2IGenerator(BaseNetwork):
         z = z + torch.zeros_like(z, requires_grad=True)
         z = self.ConvsOut[0](z)
 
-        output = torch.tanh(z)
+        output = torch.tanh(z).view(b, t, c, h, w)
         return output
 
 
@@ -120,9 +120,9 @@ class P2IDiscriminator(BaseNetwork):
         self.d2d = nn.Sequential(
             C2(in_channels, 64, k=3, s=1, p=1),
             nn.LeakyReLU(0.2, True),
-            C2(64, 128, k=4, s=2, p=1),
+            C2(64, 128, k=3, s=2, p=1),
             nn.LeakyReLU(0.2, True),
-            C2(128, 256, k=4, s=2, p=1),
+            C2(128, 256, k=3, s=2, p=1),
             nn.LeakyReLU(0.2, True),
             C2(256, 256, k=3, s=1, p=1),
             nn.LeakyReLU(0.2, True),
@@ -134,9 +134,9 @@ class P2IDiscriminator(BaseNetwork):
             nn.LeakyReLU(0.2, True),
             C3(32, 64, kt=3, ks=3, st=(1, 2, 2), pt=(1, 1, 1)),
             nn.LeakyReLU(0.2, True),
-            C3(64, 128, kt=3, ks=3, st=(2, 1, 1), pt=(1, 1, 1)),
+            C3(64, 128, kt=3, ks=3, st=(1, 2, 2), pt=(1, 1, 1)),
             nn.LeakyReLU(0.2, True),
-            C3(128, 128, kt=3, ks=3, st=(1, 1, 1), pt=(1, 1, 1)),
+            C3(128, 128, kt=3, ks=3, st=(2, 1, 1), pt=(1, 1, 1)),
             nn.LeakyReLU(0.2, True),
             nn.utils.spectral_norm(nn.Conv3d(128, 1, kernel_size=1)),
         )
@@ -155,6 +155,7 @@ class P2IDiscriminator(BaseNetwork):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x):
+
         b, t, c, h, w = x.shape
         out2d = self.d2d(x.view(b, t * c, h, w))
         x3d = x.permute(0, 2, 1, 3, 4)
@@ -164,9 +165,9 @@ class P2IDiscriminator(BaseNetwork):
         if out3d_2d.shape[-2:] != out2d.shape[-2:]:
             out3d_2d = F.interpolate(out3d_2d, size=out2d.shape[-2:], mode="bilinear", align_corners=False)
 
-        w2 = torch.exp(self.alpha2d)
-        w3 = torch.exp(self.alpha3d)
-        fused = (w2 * out2d + w3 * out3d_2d) / (w2 + w3 + 1e-6)
+        w2 = torch.sigmoid(self.alpha2d)
+        fused = (w2 * out2d + out3d_2d) 
+        
         return fused.view(b, -1)
     
     
@@ -178,5 +179,4 @@ class EBlock(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
 

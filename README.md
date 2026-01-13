@@ -20,7 +20,27 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 ### TODO
 - [ ] I got this in my mind. believe me.
-  
+
+執行這個程式碼
+python scripts/train.py --config p2igan_bench/config/p2igan_gan_v2.json
+
+1712549
+1539519
+
+mlflow ui --backend-store-uri file:/home/NAS/homes/brick-10015/P2I-GAN-benchmark/mlruns --port 5000
+ 
+> 目標 : 確認是否能夠訓練再現出於原本一樣的成果!
+
+
+1. 我現在訓練過程處理得其實差不多了
+*再加上(DK、STDK) DL模型
+*Inference 的程式碼 scripts/infer.py
+*共同評估論文裡面的指標並且繪製圖表的程式碼
+*將原本的資料從 h5 轉成 zarr 兼容 zarr 輸入
+*修改 ReadMe 使得他符合使用者的需求
+
+
+
 ## Results
 
 #### 👨🏻‍🎨 Radar-Input
@@ -78,6 +98,7 @@ This repository provides training scripts, data preprocessing workflows, visuali
    # create and activate a local virtual environment
    uv venv .venv
    source .venv/bin/activate
+   uv pip install -e .
 
    # install project dependencies from pyproject.toml / uv.lock
    uv sync
@@ -142,8 +163,6 @@ Run one of the following commands for evaluation:
  # For evaluating flow completion model
  python scripts/evaluate_flow_completion.py --dataset <dataset_name> --video_root <video_root> --mask_root <mask_root> --save_results
 ```
-
-
 
 ## License
 

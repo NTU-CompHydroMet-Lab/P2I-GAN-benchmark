@@ -11,6 +11,11 @@ class P2IDataModule:
     def __init__(self, cfg):
         self.cfg = cfg
         data_cfg = cfg["data"]
+        train_cfg = cfg["train"]
+        self.num_workers = train_cfg.get("num_workers", 0)
+        self.pin_memory = train_cfg.get("pin_memory", True)
+        self.persistent_workers = train_cfg.get("persistent_workers", True)
+        self.prefetch_factor = train_cfg.get("prefetch_factor", 2)
 
         train_cfg = data_cfg["train"]
         self.train_args = self._build_dataset_args(train_cfg)
@@ -28,8 +33,8 @@ class P2IDataModule:
         self.valid_args = None
         self.valid_shuffle = False
         if valid_cfg:
-            # validation 不繼承訓練的 sample_length，保持完整事件長度
-            self.valid_args = self._build_dataset_args(valid_cfg)
+            # validation 預設沿用訓練的尺寸/時間長度，避免與模型長度不一致
+            self.valid_args = self._build_dataset_args(valid_cfg, defaults=shared_params)
             self.valid_shuffle = bool(valid_cfg.get("shuffle", False))
 
     def train_dataloader(self):
@@ -39,14 +44,14 @@ class P2IDataModule:
     def val_dataloader(self):
         if not self.valid_args:
             return None
-        val_bs = 1
-        return self._create_loader(self.valid_args, shuffle=self.valid_shuffle, batch_size=val_bs)
+        train_bs = self.cfg["train"]["batch_size"]
+        return self._create_loader(self.valid_args, shuffle=self.valid_shuffle, batch_size=train_bs)
 
     def test_dataloader(self):
         if not self.test_args:
             return None
-        train_bs = self.cfg["train"]["batch_size"]
-        return self._create_loader(self.test_args, shuffle=self.test_shuffle, batch_size=train_bs)
+        test_bs = 1
+        return self._create_loader(self.test_args, shuffle=self.test_shuffle, batch_size=test_bs)
 
     def _create_loader(self, dataset_args, shuffle, batch_size):
         dataset = Dataset(dataset_args)
@@ -54,7 +59,10 @@ class P2IDataModule:
             dataset,
             batch_size=batch_size,
             shuffle=shuffle,
-            num_workers=self.cfg["train"]["num_workers"],
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.num_workers > 0 and self.persistent_workers,
+            prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
         )
 
     def _build_dataset_args(self, split_cfg, defaults=None):
