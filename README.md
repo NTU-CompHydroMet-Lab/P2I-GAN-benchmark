@@ -82,13 +82,16 @@ This repository provides training scripts, data preprocessing workflows, visuali
    ```bash
    # install uv if it is not already available
    pip install -U uv
+   
+   # direct to project folder
+   cd P2I-GAN-benchmark
 
    # create and activate a local virtual environment
    uv venv .venv
    source .venv/bin/activate
-   uv pip install -e .
 
    # install project dependencies from pyproject.toml / uv.lock
+   uv pip install -e .
    uv sync
    ```
  
