@@ -20,25 +20,13 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 ### TODO
 - [ ] I got this in my mind. believe me.
-
-執行這個程式碼
-python scripts/train.py --config p2igan_bench/config/p2igan_gan_v2.json
-
-1712549
-1539519
-
-mlflow ui --backend-store-uri file:/home/NAS/homes/brick-10015/P2I-GAN-benchmark/mlruns --port 5000
- 
-> 目標 : 確認是否能夠訓練再現出於原本一樣的成果!
-
-
-1. 我現在訓練過程處理得其實差不多了
-*再加上(DK、STDK) DL模型
-*Inference 的程式碼 scripts/infer.py
-*共同評估論文裡面的指標並且繪製圖表的程式碼
-*將原本的資料從 h5 轉成 zarr 兼容 zarr 輸入
-*修改 ReadMe 使得他符合使用者的需求
-
+- [ ] add DK, STDK model and train.
+- [ ] make inference code and be able to export zarr.
+- [ ] make evaluation code.
+- [ ] fix readme
+- [ ] make model output with emsemble.
+- [ ] make model output with KAN
+- [ ] make model output with DEUCE v1.0 framework (for uncertainty)
 
 
 ## Results
@@ -125,9 +113,6 @@ python scripts/infer.py \
   --experiment-name p2igan-eval-fakedata
 
 
-### 🚀 Training
-
-
 ## Dataset preparation
 
 The training and test are split into two different path with h5 files inside, with shape (HxWxT = 128x128x16).
@@ -152,16 +137,18 @@ Our training configures are provided in [`p2igan_baseline.json`](./p2igan_bench/
 
 Run one of the following commands for training:
 ```shell
- # For training ProPainter
- python scripts/train.py --config p2igan_bench/config/p2igan_baseline.json --experiment-name p2igan-baseline --run-name dry-run
+ # For training P2IGAN
+ python scripts/train.py --config p2igan_bench/config/p2igan_gan_v2.json
 
+ # For monitoring in mlflow
+ mlflow ui --backend-store-uri file:<project_path>/mlruns --port 5000
 ```
 
 ## Evaluation
 Run one of the following commands for evaluation:
 ```shell
  # For evaluating flow completion model
- python scripts/evaluate_flow_completion.py --dataset <dataset_name> --video_root <video_root> --mask_root <mask_root> --save_results
+ python scripts/evaluate.py --dataset <dataset_name> --config
 ```
 
 ## License
