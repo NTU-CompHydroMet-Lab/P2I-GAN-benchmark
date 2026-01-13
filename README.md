@@ -114,7 +114,7 @@ Since we cannot share the original Nimrod (radar) or MIDAS (gauge) datasets with
 python scripts/infer.py \
   --config p2igan_bench/config/p2igan_baseline_eval.json \
   --experiment-name p2igan-eval-fakedata
-
+```
 
 ## Dataset preparation
 
