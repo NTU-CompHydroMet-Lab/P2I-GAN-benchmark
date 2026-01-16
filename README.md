@@ -19,10 +19,13 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 ### TODO
 - [x] I got this in my mind. believe me.
-- [x] add DK, STDK model and train. > DK is hard to see the difference.
-- [ ] make inference code and be able to export zarr.
+- [x] add DK, STDK model and train.
+- [x] transfer the training into zarr
+- [x] make dataload be able to load the zarr dataset.
+- [x] make inference code and be able to export zarr.
+
 - [ ] make evaluation code.
-- [ ] fix readme
+- [ ] add zarr discription in fix readme
 - [ ] make model output with emsemble.
 - [ ] make model output with KAN
 - [ ] make model output with DEUCE v1.0 framework (for uncertainty)
@@ -162,6 +165,4 @@ For inquiries or to obtain permission for commercial use, please consult Dr. Li-
 
 ## Contact
 If you have any questions about the technical issues, please feel free to reach me out at r13521608@caece.net. 
-
-
 

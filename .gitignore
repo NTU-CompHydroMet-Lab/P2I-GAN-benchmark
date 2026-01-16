@@ -24,3 +24,4 @@ weights/
 .vscode/
 .DS_Store
 p2igan_bench/models/models_history/
+datasets/

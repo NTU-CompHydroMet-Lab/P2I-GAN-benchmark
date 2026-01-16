@@ -2,9 +2,10 @@ from copy import deepcopy
 from pathlib import Path
 import json
 
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, Subset
 
-from .sti_dataset import Dataset  # 舊 Dataset 實作
+from .sti_dataset import Dataset, Dataset_ZarrTrain  # 舊 Dataset 實作
 
 
 class P2IDataModule:
@@ -19,42 +20,61 @@ class P2IDataModule:
 
         train_cfg = data_cfg["train"]
         self.train_args = self._build_dataset_args(train_cfg)
-
         shared_params = self._extract_shared_params(self.train_args)
+
+        self.train_dataset = None
+        self.valid_dataset = None
+        self.test_dataset = None
+
+        valid_cfg = data_cfg.get("valid")
+        self.valid_args = None
+        self.valid_shuffle = False
+
+        if self._is_train_zarr(self.train_args.get("data_root")):
+            base_dataset = Dataset_ZarrTrain(self.train_args)
+            self.train_dataset, self.valid_dataset = self._split_train_valid(
+                base_dataset, seed=cfg.get("seed", 42)
+            )
+            self.valid_shuffle = False
+        else:
+            self.train_dataset = Dataset(self.train_args)
+            if valid_cfg:
+                # validation 預設沿用訓練的尺寸/時間長度，避免與模型長度不一致
+                self.valid_args = self._build_dataset_args(valid_cfg, defaults=shared_params)
+                self.valid_shuffle = bool(valid_cfg.get("shuffle", False))
+                self.valid_dataset = Dataset(self.valid_args)
 
         test_cfg = data_cfg.get("test")
         self.test_args = None
         self.test_shuffle = False
         if test_cfg:
-            self.test_args = self._build_dataset_args(test_cfg, defaults=shared_params)
+            test_defaults = self._drop_sample_length(shared_params)
+            self.test_args = self._build_dataset_args(test_cfg, defaults=test_defaults)
             self.test_shuffle = bool(test_cfg.get("shuffle", False))
-
-        valid_cfg = data_cfg.get("valid")
-        self.valid_args = None
-        self.valid_shuffle = False
-        if valid_cfg:
-            # validation 預設沿用訓練的尺寸/時間長度，避免與模型長度不一致
-            self.valid_args = self._build_dataset_args(valid_cfg, defaults=shared_params)
-            self.valid_shuffle = bool(valid_cfg.get("shuffle", False))
+            self.test_dataset = Dataset(self.test_args)
 
     def train_dataloader(self):
         train_bs = self.cfg["train"]["batch_size"]
-        return self._create_loader(self.train_args, shuffle=True, batch_size=train_bs)
+        if self.train_dataset is None:
+            return None
+        return self._create_loader(self.train_dataset, shuffle=True, batch_size=train_bs)
 
     def val_dataloader(self):
-        if not self.valid_args:
+        if self.valid_dataset is None:
             return None
         train_bs = self.cfg["train"]["batch_size"]
-        return self._create_loader(self.valid_args, shuffle=self.valid_shuffle, batch_size=train_bs)
+        return self._create_loader(self.valid_dataset, shuffle=self.valid_shuffle, batch_size=train_bs)
 
     def test_dataloader(self):
-        if not self.test_args:
+        if self.test_dataset is None:
             return None
         test_bs = 1
-        return self._create_loader(self.test_args, shuffle=self.test_shuffle, batch_size=test_bs)
+        return self._create_loader(self.test_dataset, shuffle=self.test_shuffle, batch_size=test_bs)
 
-    def _create_loader(self, dataset_args, shuffle, batch_size):
-        dataset = Dataset(dataset_args)
+    def _create_loader(self, dataset, shuffle, batch_size):
+        collate_fn = None
+        if getattr(dataset, "is_zarr", False) and getattr(dataset, "sample_length", None) is None:
+            collate_fn = self._collate_variable_length
         return DataLoader(
             dataset,
             batch_size=batch_size,
@@ -63,7 +83,31 @@ class P2IDataModule:
             pin_memory=self.pin_memory,
             persistent_workers=self.num_workers > 0 and self.persistent_workers,
             prefetch_factor=self.prefetch_factor if self.num_workers > 0 else None,
+            collate_fn=collate_fn,
         )
+
+    def _is_train_zarr(self, data_root):
+        if data_root is None:
+            return False
+        return str(data_root).endswith("train.zarr")
+
+    def _split_train_valid(self, dataset, seed: int = 42, train_ratio: float = 0.8):
+        total = len(dataset)
+        if total <= 1:
+            return dataset, None
+
+        val_size = int(total * (1 - train_ratio))
+        if val_size <= 0:
+            val_size = 1
+        if val_size >= total:
+            val_size = total - 1
+
+        train_size = total - val_size
+        generator = torch.Generator().manual_seed(seed)
+        indices = torch.randperm(total, generator=generator).tolist()
+        train_idx = indices[:train_size]
+        val_idx = indices[train_size:]
+        return Subset(dataset, train_idx), Subset(dataset, val_idx)
 
     def _build_dataset_args(self, split_cfg, defaults=None):
         defaults = defaults or {}
@@ -102,6 +146,28 @@ class P2IDataModule:
         if "mask" in dataset_args:
             shared["mask"] = deepcopy(dataset_args["mask"])
         return shared
+
+    def _drop_sample_length(self, params):
+        params = deepcopy(params)
+        params.pop("sample_length", None)
+        return params
+
+    @staticmethod
+    def _collate_variable_length(batch):
+        videos, masked_videos, masks = zip(*batch)
+        max_len = max(v.shape[0] for v in videos)
+
+        def _pad(seq):
+            if seq.shape[0] == max_len:
+                return seq
+            pad_len = max_len - seq.shape[0]
+            pad = seq[-1:].repeat(pad_len, 1, 1, 1)
+            return torch.cat([seq, pad], dim=0)
+
+        videos = torch.stack([_pad(v) for v in videos], dim=0)
+        masked_videos = torch.stack([_pad(v) for v in masked_videos], dim=0)
+        masks = torch.stack([_pad(v) for v in masks], dim=0)
+        return videos, masked_videos, masks
 
 
 def _describe_tensor(name, tensor):

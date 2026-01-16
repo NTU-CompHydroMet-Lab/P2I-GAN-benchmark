@@ -1,8 +1,8 @@
 {
   "seed": 2024,
   "device": "cuda:0",
-  "save_dir": "weights/p2igan_baseline",
-  "experiment_name": "p2igan-baseline",
+  "save_dir": "weights/p2igan_gan_v2",
+  "experiment_name": "p2igan-gan-v2",
   "run_name": "debug-run-001",
   "description": "P2I-GAN baseline found artificat, try to fix, test without gan",
   

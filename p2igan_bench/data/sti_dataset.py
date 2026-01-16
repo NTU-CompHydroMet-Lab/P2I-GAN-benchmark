@@ -5,7 +5,9 @@ import torch
 import numpy as np
 from torchvision.transforms import Compose, Lambda
 import h5py
+import zarr
 import re
+import random
 
 #this part will creat mask and the dataset
 
@@ -128,14 +130,20 @@ class Dataset(torch.utils.data.Dataset):
         """Dataset wrapper that支援 mp4/avi/h5 並依配置產生遮罩."""
         self.video_folder = args['data_root']
         self.transform = transform
-        self.video_files = sorted(
-            [
-                os.path.join(self.video_folder, f)
-                for f in os.listdir(self.video_folder)
-                if f.endswith(('.mp4', '.avi', '.h5'))
-            ],
-            key=lambda f: extract_number(os.path.basename(f))
-        )
+        self.is_zarr = str(self.video_folder).endswith(".zarr")
+        self.zarr_root = None
+        if self.is_zarr:
+            self.zarr_root = zarr.open(self.video_folder, mode="r")
+            self.video_files = sorted(self.zarr_root.array_keys())
+        else:
+            self.video_files = sorted(
+                [
+                    os.path.join(self.video_folder, f)
+                    for f in os.listdir(self.video_folder)
+                    if f.endswith(('.mp4', '.avi', '.h5'))
+                ],
+                key=lambda f: extract_number(os.path.basename(f))
+            )
 
         mask_cfg = args.get('mask', {})
         self.mask_type = mask_cfg.get('type', 'sti')
@@ -148,12 +156,6 @@ class Dataset(torch.utils.data.Dataset):
         self.height = args['h']
         self.sample_length = args.get('sample_length')
 
-        # print(f"Number of files in data_root1: {len(self.video_files)}")
-        # print(f"Number of files in data_root2: {len(self.video2_files)}")
-        # print(f"First file in data_root1: {self.video_files[0]}")
-        # print(f"First file in data_root2: {self.video2_files[0]}")
-        # ... 其他代碼保持不變 ...
-
     def __len__(self):
         return len(self.video_files)
 
@@ -164,6 +166,8 @@ class Dataset(torch.utils.data.Dataset):
         return self.process_file(self.video_files[idx])
 
     def process_file(self, file_path):
+        if self.is_zarr:
+            return self.process_zarr(file_path)
         if file_path.endswith(('.mp4', '.avi')):
             return self.process_video(file_path)
         elif file_path.endswith('.h5'):
@@ -184,6 +188,16 @@ class Dataset(torch.utils.data.Dataset):
             # 確保數據格式正確
             if video_data.ndim == 3:  # 如果是 (T, H, W)
                 video_data = video_data[..., np.newaxis]  # 變成 (T, H, W, 1)
+        return self.post_process(video_data)
+
+    def process_zarr(self, key):
+        if self.zarr_root is None:
+            raise RuntimeError("Zarr root not initialized.")
+        video_data = self.zarr_root[key][:]
+        if video_data.ndim == 3:
+            video_data = video_data[..., np.newaxis]
+        elif video_data.ndim == 4 and video_data.shape[-1] != 1:
+            video_data = np.mean(video_data, axis=-1, keepdims=True)
         return self.post_process(video_data)
 
     def post_process(self, video_data):
@@ -223,3 +237,89 @@ class Dataset(torch.utils.data.Dataset):
         end_y = start_y + self.height
         end_x = start_x + self.width
         return data[:, start_y:end_y, start_x:end_x, :]
+
+
+# ------------------------------------------------------------
+# Zarr training dataset (window-based)
+# ------------------------------------------------------------
+class Dataset_ZarrTrain(Dataset):
+    """
+    Dataset for nimrod_train.zarr
+
+    Assumed zarr structure:
+    root/
+      ├── events/<event_key>/frames   (T, H, W)
+      └── index/windows               (N, 3) -> [event_id, start_t, length]
+    """
+
+    def __init__(self, args):
+        self.zarr_path = args["data_root"]
+        self.z = zarr.open(self.zarr_path, mode="r")
+
+        # groups
+        self.events_grp = self.z["events"]
+        self.index_arr = self.z["index"]["windows"]
+
+        # build event_id -> key mapping (order matters)
+        self.event_keys = list(self.events_grp.keys())
+        self.event_keys.sort()  # timestamp order
+        self.event_id_to_key = {
+            i: k for i, k in enumerate(self.event_keys)
+        }
+
+        # spatial / temporal config
+        self.window = args.get("sample_length", self.z.attrs.get("suggested_window", 20))
+        self.crop_h = args["h"]
+        self.crop_w = args["w"]
+
+        # mask config (reuse your logic)
+        mask_cfg = args.get("mask", {})
+        self.mask_type = mask_cfg.get("type", "sti")
+        self.mask_file = mask_cfg.get("file")
+        self.block_sizes = mask_cfg.get("block_sizes", [4])
+        self.mask_keep = mask_cfg.get("keep", 4)
+        self.mask_interval = mask_cfg.get("interval", [2, 5])
+
+    def __len__(self):
+        return self.index_arr.shape[0]
+
+    def __getitem__(self, idx):
+        # ---- 1. resolve window index ----
+        event_id, start_t, length = self.index_arr[idx]
+        event_key = self.event_id_to_key[int(event_id)]
+        frames_z = self.events_grp[event_key]["frames"]
+
+        T, H, W = frames_z.shape
+        L = int(length)
+
+        # ---- 2. random spatial crop (aligned with chunk) ----
+        if H == self.crop_h and W == self.crop_w:
+            y0, x0 = 0, 0
+        else:
+            y0 = random.randint(0, H - self.crop_h)
+            x0 = random.randint(0, W - self.crop_w)
+
+        # ---- 3. minimal zarr read (this is the key point) ----
+        video = frames_z[
+            start_t:start_t + L,
+            y0:y0 + self.crop_h,
+            x0:x0 + self.crop_w,
+        ]
+
+        # ---- 4. to torch ----
+        video = torch.from_numpy(video.astype(np.float32) / 255.0)
+        video = video.unsqueeze(-1)  # (T,H,W,1)
+
+        # ---- 5. mask ----
+        mask = create_mask(
+            video,
+            mask_type=self.mask_type,
+            mask_file=self.mask_file,
+            block_sizes=self.block_sizes,
+            keep=self.mask_keep,
+            interval=self.mask_interval,
+        )
+
+        masked_video = video * mask
+
+        return video, masked_video, mask

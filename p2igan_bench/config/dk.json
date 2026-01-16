@@ -46,7 +46,8 @@
         "interval": [2, 3, 4, 5, 6],
         "file": "/home/NAS/homes/brick-10015/INGAN/core/rain_gauge_mask_1024_train.txt"
       },
-      "shuffle": false
+      "shuffle": false,
+      "sample_length": null
     }
   },
   "loss": {
