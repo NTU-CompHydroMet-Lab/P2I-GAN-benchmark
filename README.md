@@ -12,20 +12,18 @@ This repository provides training scripts, data preprocessing workflows, visuali
 </div>
 
 ## Update
-- **2026.01.16**: Our code and model are publicly available. 🐳 < planing, hope I got this.
+- **2026.03.16**: Our code and model are publicly available. 🐳 
+- **2026.01.16**: Our code and model are publicly available. 🐳 
 - **2025.12.24**: The training pipelines are updated.
 - **2025.12.06**: This repo is created.
 
 
 ### TODO
-- [x] I got this in my mind. believe me.
-- [x] add DK, STDK model and train.
-- [x] transfer the training into zarr
-- [x] make dataload be able to load the zarr dataset.
-- [x] make inference code and be able to export zarr.
-
+- [ ] train dk and stdk, infer them.
 - [ ] make evaluation code.
-- [ ] add zarr discription in fix readme
+- [ ] add zarr discription, and in readme
+
+- [ ] March
 - [ ] make model output with emsemble.
 - [ ] make model output with KAN
 - [ ] make model output with DEUCE v1.0 framework (for uncertainty)
