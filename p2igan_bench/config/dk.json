@@ -1,10 +1,10 @@
 {
   "seed": 2024,
   "device": "cuda:0",
-  "save_dir": "weights/dk",
-  "experiment_name": "dk",
+  "save_dir": "weights/dkv1",
+  "experiment_name": "dkv1",
   "run_name": "debug-run-001",
-  "description": "deepkriging baseline",
+  "description": "deepkriging baseline, use p = 4.0 to mitigate artifacts.",
   
   "model": {
     "name": "dk",

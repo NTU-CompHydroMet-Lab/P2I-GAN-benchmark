@@ -18,8 +18,8 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 
 ### TODO
-- [v] I got this in my mind. believe me.
-- [v] add DK, STDK model and train. > DK is hard to see the difference.
+- [x] I got this in my mind. believe me.
+- [x] add DK, STDK model and train. > DK is hard to see the difference.
 - [ ] make inference code and be able to export zarr.
 - [ ] make evaluation code.
 - [ ] fix readme

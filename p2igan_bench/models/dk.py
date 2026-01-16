@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ast import In
 
 import torch
 import torch.nn as nn
@@ -74,10 +75,42 @@ class DKPhi2DSubsampledMultiRes(nn.Module):
         knots_all = []
         theta_all = []
         for M, sp in zip(self.num_basis_per_level, spacings):
+
+            # In the original DeepKriging formulation, the spatial embedding is constructed 
+            # using multi-resolution radial basis functions defined on a dense grid of knots, 
+            # where the total number of basis functions grows quadratically with spatial resolution 
+            # in two dimensions.
+
+            # However, in dense-grid settings such as image-based interpolation, constructing the full 
+            # set of knots at each resolution level leads to prohibitive memory and computational costs.
+
+            # To make the method feasible in this context, we adopt a low-rank approximation by subsampling 
+            # a fixed number of knots at each resolution level while preserving the original radial Wendland 
+            # basis formulation. This results in a reduced but multi-resolution spatial embedding that maintains 
+            # the theoretical structure of DeepKriging, while enabling practical training and inference on dense 
+            # spatial grids.
+            
             knots_full = self._make_level_grid_knots(H, W, sp, device=device)
             knots_sub = self._subsample_knots_uniform(knots_full, M)
             knots_all.append(knots_sub)
-            theta_all.append(torch.full((knots_sub.shape[0],), 2.5 * float(sp), device=device))
+
+            # In the original DeepKriging framework, the support radius of the Wendland 
+            # basis is set to 2.5 times the knot spacing, assuming a dense and regular grid 
+            # of knots at each resolution level.
+
+            # In our implementation, due to the use of subsampled knots for computational 
+            # feasibility, the effective distance between neighboring knots becomes larger 
+            # than that of the original full-grid setting. When retaining the original support 
+            # radius, this leads to insufficient overlap between neighboring basis functions, 
+            # which manifests as localized point-like artifacts in dense spatial predictions.
+
+            # To compensate for the reduced knot density and restore sufficient overlap among 
+            # radial basis functions, we increase the support radius multiplier from 2.5 to 4.0. 
+            # This adjustment does not alter the functional form of the basis functions, but 
+            # ensures smoother spatial coverage and mitigates knot imprinting artifacts induced 
+            # by low-rank approximation.
+            
+            theta_all.append(torch.full((knots_sub.shape[0],), 4.0 * float(sp), device=device))
 
         knots = torch.cat(knots_all, dim=0)
         theta = torch.cat(theta_all, dim=0)
