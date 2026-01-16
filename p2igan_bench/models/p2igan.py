@@ -155,11 +155,13 @@ class P2IDiscriminator(BaseNetwork):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x):
-
         b, t, c, h, w = x.shape
-        out2d = self.d2d(x.view(b, t * c, h, w))
-        x3d = x.permute(0, 2, 1, 3, 4)
-        out3d = self.d3d(x3d)
+
+        # 2D branch
+        out2d = self.d2d(x.reshape(b, t * c, h, w))
+
+        # 3D branch
+        out3d = self.d3d(x.permute(0, 2, 1, 3, 4))
         out3d_2d = out3d.mean(dim=2)
 
         if out3d_2d.shape[-2:] != out2d.shape[-2:]:

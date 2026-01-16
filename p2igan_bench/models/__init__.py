@@ -4,8 +4,10 @@ from typing import Any, Dict
 
 import torch.nn as nn
 
+from .dk import DKGenerator
 from .p2igan import P2IDiscriminator, P2IGenerator
 from .simple import SimpleDiscriminator, SimpleGenerator
+from .stdk import STDKGenerator
 
 
 def build_generator(cfg: Dict[str, Any]) -> nn.Module:
@@ -17,6 +19,14 @@ def build_generator(cfg: Dict[str, Any]) -> nn.Module:
 
     if model_name == "p2igan":
         return P2IGenerator(cfg)
+    if model_name == "dk":
+        data_cfg = cfg.get("data_loader") or cfg.get("data", {}).get("train", {})
+        sample_length = data_cfg.get("sample_length", 16)
+        return DKGenerator(cfg, length=sample_length)
+    if model_name == "stdk":
+        data_cfg = cfg.get("data_loader") or cfg.get("data", {}).get("train", {})
+        sample_length = data_cfg.get("sample_length", 16)
+        return STDKGenerator(cfg, length=sample_length)
 
     return SimpleGenerator(in_channels=in_channels, out_channels=out_channels, base_channels=base_channels)
 
@@ -43,4 +53,6 @@ __all__ = [
     "SimpleDiscriminator",
     "P2IGenerator",
     "P2IDiscriminator",
+    "DKGenerator",
+    "STDKGenerator",
 ]

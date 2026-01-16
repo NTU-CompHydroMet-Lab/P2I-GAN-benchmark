@@ -168,6 +168,10 @@ class Trainer:
         metric_cfg = MetricConfig()
         self.val_metrics = RainfallMetricSuite(metric_cfg).to(self.device)
         self.test_metrics = RainfallMetricSuite(metric_cfg).to(self.device)
+        viz_cfg = cfg.get("viz", {})
+        self.viz_scale = str(viz_cfg.get("scale", "gt_pred")).lower()
+        self.viz_vmin = viz_cfg.get("vmin")
+        self.viz_vmax = viz_cfg.get("vmax")
 
     def _log_gpu_stats(self) -> None:
         if self.device.type != "cuda" or not torch.cuda.is_available():
@@ -401,8 +405,20 @@ class Trainer:
                 gt = frames[idx]  # [T, C, H, W]
                 pd = preds[idx].clamp(0, 1)
 
-                gt_color, gt_stats = self._colorize_sequence(gt)
-                pd_color, pd_stats = self._colorize_sequence(pd)
+                gt_min = float(gt.min().detach())
+                gt_max = float(gt.max().detach())
+                pd_min = float(pd.min().detach())
+                pd_max = float(pd.max().detach())
+
+                if self.viz_scale == "fixed" and self.viz_vmin is not None and self.viz_vmax is not None:
+                    vmin, vmax = float(self.viz_vmin), float(self.viz_vmax)
+                elif self.viz_scale == "gt":
+                    vmin, vmax = gt_min, gt_max
+                else:
+                    vmin, vmax = min(gt_min, pd_min), max(gt_max, pd_max)
+
+                gt_color, gt_stats = self._colorize_sequence(gt, vmin=vmin, vmax=vmax)
+                pd_color, pd_stats = self._colorize_sequence(pd, vmin=vmin, vmax=vmax)
 
                 seq = torch.cat([gt_color, pd_color], dim=0)
                 grid = make_grid(seq, nrow=gt.shape[0], padding=2)
@@ -415,7 +431,7 @@ class Trainer:
                 )
                 mlflow.log_artifact(str(out_path))
 
-    def _colorize_sequence(self, seq: torch.Tensor):
+    def _colorize_sequence(self, seq: torch.Tensor, vmin: float | None = None, vmax: float | None = None):
         # seq: [T, C, H, W]
         t, c, h, w = seq.shape
         stats = (
@@ -425,6 +441,8 @@ class Trainer:
         )
         out_frames = []
         cmap = cm.get_cmap("viridis")
+        if vmin is None or vmax is None:
+            vmin, vmax = stats[0], stats[2]
         for i in range(t):
             frame = seq[i]
             if frame.shape[0] == 1:
@@ -432,7 +450,6 @@ class Trainer:
             else:
                 frame = frame.mean(dim=0)
             np_frame = frame.detach().cpu().numpy()
-            vmin, vmax = np_frame.min(), np_frame.max()
             norm = (np_frame - vmin) / (vmax - vmin + 1e-6)
             colored = cmap(norm)[..., :3]  # HWC
             out_frames.append(torch.from_numpy(colored).permute(2, 0, 1))

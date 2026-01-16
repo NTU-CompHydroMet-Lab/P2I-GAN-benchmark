@@ -11,7 +11,6 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 </div>
 
-
 ## Update
 - **2026.01.16**: Our code and model are publicly available. 🐳 < planing, hope I got this.
 - **2025.12.24**: The training pipelines are updated.
@@ -19,8 +18,8 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 
 ### TODO
-- [ ] I got this in my mind. believe me.
-- [ ] add DK, STDK model and train.
+- [v] I got this in my mind. believe me.
+- [v] add DK, STDK model and train. > DK is hard to see the difference.
 - [ ] make inference code and be able to export zarr.
 - [ ] make evaluation code.
 - [ ] fix readme
@@ -163,3 +162,6 @@ For inquiries or to obtain permission for commercial use, please consult Dr. Li-
 
 ## Contact
 If you have any questions about the technical issues, please feel free to reach me out at r13521608@caece.net. 
+
+
+
