@@ -30,4 +30,3 @@ Set in `experiments/config.py`:
 Output will be written to:
 - `experiments/results/<experiment_name>/exp2/<output_pdf>`
 
-add exp1/exp2/exp3 features
