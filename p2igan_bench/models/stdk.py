@@ -116,7 +116,9 @@ class STDKGenerator(BaseNetwork):
         self.dk_phi_time  = DKPhi1D(num_basis=num_basis_time)
 
         K_s = sum(num_basis_space)   # 139
-        K_t = sum(num_basis_time)
+        # Temporal basis count depends on T when subsampling; compute actual K_t for fixed length.
+        knots_t, _ = self.dk_phi_time.build(self.length, device=torch.device("cpu"))
+        K_t = knots_t.shape[0]
 
         feature_dim = K_s + K_t + self.length * 79
         self._mlp = DKMLP(feature_dim=feature_dim)
@@ -242,7 +244,7 @@ class DKPhi2DSubsampledMultiRes(nn.Module):
             knots_full = self._make_level_grid_knots(H, W, sp, device=device)
             knots_sub  = self._subsample_knots_uniform(knots_full, M)  # [M,2]
             knots_all.append(knots_sub)
-            theta_all.append(torch.full((knots_sub.shape[0],), 2.5 * float(sp), device=device))
+            theta_all.append(torch.full((knots_sub.shape[0],), 4.0 * float(sp), device=device))
 
         knots = torch.cat(knots_all, dim=0)                # [K,2]
         theta = torch.cat(theta_all, dim=0)                # [K]

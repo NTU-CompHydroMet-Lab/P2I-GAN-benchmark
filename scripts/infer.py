@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--log-every", type=int, default=50, help="Log progress every N samples.")
     parser.add_argument("--stride", type=int, default=16, help="Sliding window length.")
     parser.add_argument("--overlap", type=int, default=12, help="Sliding window overlap.")
+    parser.add_argument("--output-scale", type=float, default=255.0, help="Scale factor for outputs.")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output zarr.")
     parser.add_argument("--log-level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING)")
     return parser.parse_args()
@@ -172,6 +173,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
             "model_name": model_name,
             "data_root": cfg.get("data", {}).get("test", {}).get("data_root"),
             "passes": int(parsed.passes),
+            "output_scale": float(parsed.output_scale),
         }
     )
     if hasattr(dataset, "video_files"):
@@ -239,6 +241,7 @@ def main(args: Optional[argparse.Namespace] = None) -> None:
                         comp_frames_weight[idx] += 1.0
 
                 comp_frames = comp_frames_accum / np.maximum(comp_frames_weight, 1e-5)
+                comp_frames = comp_frames * float(parsed.output_scale)
                 comp_frames = np.clip(comp_frames, 0.0, None)
 
                 event_name = f"event_{offset + 1:02d}"

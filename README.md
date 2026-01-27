@@ -19,9 +19,12 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 
 ### TODO
-- [ ] train dk and stdk, infer them.
-- [ ] make evaluation code.
-- [ ] add zarr discription, and in readme
+- [x] train dk and stdk.
+- [x] make evaluation code.
+- [x] infer p2igan、dk、stdk and test exp1 exp2 exp3
+
+- [ ] add zarr discription, and add gif examples in readme < next week
+
 
 - [ ] March
 - [ ] make model output with emsemble.
