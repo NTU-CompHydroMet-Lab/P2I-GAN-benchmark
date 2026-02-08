@@ -19,14 +19,6 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 
 ### TODO
-- [x] train dk and stdk.
-- [x] make evaluation code.
-- [x] infer p2igan、dk、stdk and test exp1 exp2 exp3
-
-- [ ] add zarr discription, and add gif examples in readme < next week
-
-
-- [ ] March
 - [ ] make model output with emsemble.
 - [ ] make model output with KAN
 - [ ] make model output with DEUCE v1.0 framework (for uncertainty)
@@ -95,13 +87,13 @@ This repository provides training scripts, data preprocessing workflows, visuali
  
 ## Get Started
 ### Prepare pretrained models
-Download our pretrained models from [Releases V0.1.0](https://github.com/sczhou/ProPainter/releases/tag/v0.1.0) < need to change in the future
+Download our pretrained models from [Releases V0.1.0](https://drive.google.com/file/d/1oPkmll4_5NlkVTdDr57Bhr4UbWi-Fruw/view?usp=drive_link)
 
 The directory structure will be arranged as:
 ```
 weights
-   |- P2IGANv0.1.0.pth
-   |- README.md
+   |- test
+      |- P2IGANv0.1.0.pt
 ```
 
 ### Inference with Fake Data
