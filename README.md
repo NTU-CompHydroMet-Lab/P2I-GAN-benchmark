@@ -40,10 +40,10 @@ This repository provides training scripts, data preprocessing workflows, visuali
    <td> 
       <img src="assets/comparison_event_04.gif">
    </td>
-   <td> 
-      <img src="assets/comparison_event_05.gif">
-   </td>
 </tr>
+   <tr> 
+      <img src="assets/comparison_event_05.gif">
+   </tr>
 </table>
 <!-- 
 #### 🎨 Gauge Input
