@@ -35,16 +35,11 @@ This repository provides training scripts, data preprocessing workflows, visuali
 ## Results
 
 #### 👨🏻‍🎨 Radar-Input
-<table>
-<tr>
-   <td> 
-      <img src="assets/comparison_event_04.gif">
-   </td>
-</tr>
-   <tr> 
-      <img src="assets/comparison_event_05.gif">
-   </tr>
-</table>
+
+<img src="assets/comparison_event_04.gif">
+
+<img src="assets/comparison_event_05.gif">
+
 <!-- 
 #### 🎨 Gauge Input
 <table>
