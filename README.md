@@ -38,14 +38,14 @@ This repository provides training scripts, data preprocessing workflows, visuali
 <table>
 <tr>
    <td> 
-      <img src="assets/object_removal1.gif">
+      <img src="assets/comparison_event_04.gif">
    </td>
    <td> 
-      <img src="assets/object_removal2.gif">
+      <img src="assets/comparison_event_05.gif">
    </td>
 </tr>
 </table>
-
+<!-- 
 #### 🎨 Gauge Input
 <table>
 <tr>
@@ -64,7 +64,7 @@ This repository provides training scripts, data preprocessing workflows, visuali
       <img src="assets/video_completion4.gif">
    </td>
 </tr>
-</table>
+</table> -->
 
 
 
@@ -119,24 +119,116 @@ python scripts/infer.py \
   --experiment-name p2igan-eval-fakedata
 ```
 
-## Dataset preparation
+## Dataset Preparation
 
-The training and test are split into two different path with h5 files inside, with shape (HxWxT = 128x128x16).
-In our research, we use Nimrod (radar) or MIDAS (gauge), please use your own dataset here.
-The `datasets` directory structure will be arranged as: (**Note**: please check it carefully)
+The training and testing datasets are stored in **separate directories**, each containing HDF5 (`.h5`) files.  
+Each HDF5 file represents a single event with the following shape:
+
+```
+(H, W, T) = (128, 128, 16)
+```
+
+In our experiments, the data sources include **Nimrod (radar)** and **MIDAS (rain gauge)**.  
+Users should replace these with their own datasets following the same format.
+
+---
+
+## HDF5 Directory Structure
 
 ```
 datasets
-   |- train
-      |- 201601011320.h5
-      |- 201601020600.h5
-   |- test
-      |- 201601010000.h5
-      |- 201601010320.h5
-   |- test
-      |- event1.h5
-      |- event2.h5
+├── train
+│   ├── 201601011320.h5
+│   ├── 201601020600.h5
+│
+├── test
+│   ├── 201601010000.h5
+│   ├── 201601010320.h5
+│
+├── test_events
+│   ├── event1.h5
+│   ├── event2.h5
 ```
+
+Each `.h5` file must contain a dataset named `frames` with shape `(T, H, W)` or `(H, W, T)` that can be reshaped accordingly.
+
+---
+
+## Zarr-Based Dataset (Optional)
+
+This project also supports **Zarr-based datasets**, which are recommended for large-scale radar or gauge data and long time series training.
+
+Compared with HDF5, Zarr provides:
+- Chunked storage
+- Partial I/O
+- Better scalability for sliding-window training
+
+The Zarr format is fully compatible with the provided `Dataset` and `Dataset_ZarrTrain` implementations.
+
+---
+
+## Zarr Directory Structure
+
+```
+datasets
+├── train.zarr
+│   ├── events
+│   │   ├── 20160101
+│   │   │   └── frames        # (T, H, W), uint8
+│   │   ├── 20160102
+│   │   │   └── frames
+│   │
+│   ├── index
+│   │   └── windows           # (N, 3) -> [event_id, start_t, length]
+│   │
+│   └── .zattrs
+│
+├── test.zarr
+│   ├── events
+│   │   ├── event1
+│   │   │   └── frames
+│   │   ├── event2
+│   │   │   └── frames
+│   │
+│   ├── index
+│   │   └── windows
+│   │
+│   └── .zattrs
+```
+
+---
+
+## Zarr Data Conventions
+
+- **frames**
+  - Shape: `(T, H, W)`
+  - Data type: `uint8`
+  - Values are scaled to `[0, 255]` before storage
+
+- **index/windows**
+  - Shape: `(N, 3)`
+  - Format: `[event_id, start_t, length]`
+  - Defines temporal windows for training or evaluation
+
+- Training and testing datasets are stored in **independent Zarr roots**
+  - `train.zarr`
+  - `test.zarr`
+
+---
+
+## Zarr Attributes
+
+Stored in `.zattrs` at the root level:
+
+```json
+{
+  "suggested_window": 20,
+  "description": "Radar / gauge rainfall sequences for spatio-temporal interpolation and nowcasting"
+}
+```
+
+The `suggested_window` attribute is used by `Dataset_ZarrTrain` as the default temporal window length.
+
 
 ## Training
 Our training configures are provided in [`p2igan_baseline.json`](./p2igan_bench/configs/p2igan_baseline.json) 
@@ -156,13 +248,29 @@ Run one of the following commands for evaluation:
  # For evaluating flow completion model
  python scripts/evaluate.py --dataset <dataset_name> --config
 ```
-
 ## License
 
-#### Non-Commercial Use Only Declaration
-The P2IGAN is made available for use, reproduction, and distribution strictly for non-commercial purposes.
+MIT License
+Copyright (c) 2026 Li-Pen Wang & Bing-Zhang Wang
 
-For inquiries or to obtain permission for commercial use, please consult Dr. Li-Pen Wang 
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 ## Contact
 If you have any questions about the technical issues, please feel free to reach me out at r13521608@caece.net. 
