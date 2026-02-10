@@ -12,8 +12,7 @@ This repository provides training scripts, data preprocessing workflows, visuali
 </div>
 
 ## Update
-- **2026.03.16**: Our code and model are publicly available. 🐳 
-- **2026.01.16**: Our code and model are publicly available. 🐳 
+- **2026.02.10**: Our code and model are publicly available. 🐳 
 - **2025.12.24**: The training pipelines are updated.
 - **2025.12.06**: This repo is created.
 
