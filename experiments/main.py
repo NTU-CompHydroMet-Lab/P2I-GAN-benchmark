@@ -96,6 +96,7 @@ def main() -> None:
             vmax=cfg.visualization_vmax,
             gif_fps=cfg.gif_fps,
             divide_by_3=True,
+            mode=cfg.mode,
         )
 
     if cfg.run_exp2_pdf:

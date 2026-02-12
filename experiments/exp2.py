@@ -74,7 +74,7 @@ def _save_combo_gif(frames_map: Dict[str, np.ndarray],
         if len(labels) == 1:
             axes = [axes]
         for ax, label, frames in zip(axes, labels, frames_list):
-            if label.lower() == "input" and input_mask is not None:
+            if label.lower() in {"input", "gauge"} and input_mask is not None:
                 ax.imshow(np.zeros_like(frames[t]), cmap="gray", vmin=0.0, vmax=1.0)
                 if mask_points is not None and mask_points.size > 0:
                     vals = frames[t][input_mask.astype(bool)]
@@ -167,7 +167,10 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
              vmin: float,
              vmax: float,
              gif_fps: int,
-             divide_by_3: bool = True) -> None:
+             divide_by_3: bool = True,
+             mode: str = "radar") -> None:
+    input_label = "Gauge" if mode == "gauge" else "Input"
+    truth_label = "Radar" if mode == "gauge" else "Truth"
     if isinstance(truth, str) and isinstance(observation, str):
         event_keys = _list_event_keys(truth)
         if not event_keys:
@@ -210,8 +213,8 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
                 f"{event_key}: frames 1-{total_frames} (count={total_frames})"
             )
             combo_frames = {
-                "Input": masked_input,
-                "Truth": truth_ev,
+                input_label: masked_input,
+                truth_label: truth_ev,
             }
             for name, pred_ev in preds_ev.items():
                 combo_frames[name] = pred_ev
@@ -251,8 +254,8 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
         preds_aligned[name] = preds_aligned[name][:total_frames]
 
     combo_frames = {
-        "Input": masked_input,
-        "Truth": truth_arr,
+        input_label: masked_input,
+        truth_label: truth_arr,
     }
     for name, pred_arr in preds_aligned.items():
         combo_frames[name] = pred_arr

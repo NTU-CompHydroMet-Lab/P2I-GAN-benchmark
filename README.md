@@ -31,8 +31,14 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 <img src="assets/comparison_event_05.gif">
 
-<!-- 
 #### 🎨 Gauge Input
+
+<img src="assets/gauge_event_03.gif">
+
+<img src="assets/gauge_event_07.gif">
+
+<!-- 
+
 <table>
 <tr>
    <td> 
@@ -222,41 +228,27 @@ Our training configures are provided in [`p2igan_baseline.json`](./p2igan_bench/
 Run one of the following commands for training:
 ```shell
  # For training P2IGAN
- python scripts/train.py --config p2igan_bench/config/p2igan_gan_v2.json
+ python scripts/train.py --config p2igan_bench/config/p2igan_gan_baseline.json
 
  # For monitoring in mlflow
  mlflow ui --backend-store-uri file:<project_path>/mlruns --port 5000
+
+  # For infer P2IGAN
+ python scripts/infer.py --config p2igan_bench/config/p2igan_gan_baseline.json
+
 ```
 
 ## Evaluation
 Run one of the following commands for evaluation:
 ```shell
  # For evaluating flow completion model
- python scripts/evaluate.py --dataset <dataset_name> --config
+ cd experiments
+ python -m experiments.main
 ```
 ## License
 
 MIT License
 Copyright (c) 2026 Li-Pen Wang & Bing-Zhang Wang
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
 
 ## Contact
 If you have any questions about the technical issues, please feel free to reach me out at r13521608@caece.net. 
