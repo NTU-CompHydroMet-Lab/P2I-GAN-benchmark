@@ -37,27 +37,6 @@ This repository provides training scripts, data preprocessing workflows, visuali
 
 <img src="assets/gauge_event_07.gif">
 
-<!-- 
-
-<table>
-<tr>
-   <td> 
-      <img src="assets/video_completion1.gif">
-   </td>
-   <td> 
-      <img src="assets/video_completion2.gif">
-   </td>
-</tr>
-<tr>
-   <td> 
-      <img src="assets/video_completion3.gif">
-   </td>
-   <td> 
-      <img src="assets/video_completion4.gif">
-   </td>
-</tr>
-</table> -->
-
 
 
 ## Overview
@@ -246,9 +225,20 @@ Run one of the following commands for evaluation:
  python -m experiments.main
 ```
 ## License
+This project is licensed under the MIT License — see the LICENSE file for details.
 
-MIT License
-Copyright (c) 2026 Li-Pen Wang & Bing-Zhang Wang
+## Citation
+```
+@software{wang2026p2igan,
+  author       = {Wang, Bing-Zhang and Wang, Li-Pen},
+  title        = {P2I-GAN Benchmark: Deep Generative Framework for Spatio-Temporal Rainfall Reconstruction from Sparse Gauges},
+  year         = {2026},
+  version      = {0.1.0},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.18623976},
+  url          = {https://github.com/NTU-CompHydroMet-Lab/P2I-GAN-benchmark}
+}
+```
 
 ## Contact
 If you have any questions about the technical issues, please feel free to reach me out at r13521608@caece.net. 
