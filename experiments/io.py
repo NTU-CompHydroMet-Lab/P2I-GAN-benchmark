@@ -35,7 +35,21 @@ def load_mask(path: str) -> np.ndarray:
     return mask.astype(bool)
 
 
-def _open_zarr_xarray(path: str, key: Optional[str] = None) -> np.ndarray:
+def _crop_last2(arr: np.ndarray, size: Optional[int]) -> np.ndarray:
+    if size is None:
+        return np.asarray(arr)
+    arr = np.asarray(arr)
+    if arr.ndim < 2:
+        return arr
+    h, w = arr.shape[-2:]
+    if size > min(h, w):
+        raise ValueError(f"crop size {size} exceeds input {h}x{w}")
+    top = (h - size) // 2
+    left = (w - size) // 2
+    return arr[..., top:top + size, left:left + size]
+
+
+def _open_zarr_xarray(path: str, key: Optional[str] = None, crop_size: Optional[int] = None) -> np.ndarray:
     import xarray as xr
 
     ds = xr.open_zarr(path)
@@ -45,21 +59,21 @@ def _open_zarr_xarray(path: str, key: Optional[str] = None) -> np.ndarray:
         arr = ds[key].values
     else:
         arr = ds.values
-    return np.asarray(arr)
+    return _crop_last2(arr, crop_size)
 
 
-def _open_zarr_native(path: str) -> np.ndarray:
+def _open_zarr_native(path: str, crop_size: Optional[int] = None) -> np.ndarray:
     import zarr
 
     z = zarr.open(path, mode="r")
     if hasattr(z, "array_keys"):
         keys = list(z.array_keys())
         if keys:
-            return np.asarray(z[keys[0]])
-    return np.asarray(z)
+            return _crop_last2(np.asarray(z[keys[0]]), crop_size)
+    return _crop_last2(np.asarray(z), crop_size)
 
 
-def _load_zarr_events_xarray(path: str) -> Optional[Dict[str, np.ndarray]]:
+def _load_zarr_events_xarray(path: str, crop_size: Optional[int] = None) -> Optional[Dict[str, np.ndarray]]:
     try:
         import xarray as xr
     except Exception:
@@ -67,41 +81,61 @@ def _load_zarr_events_xarray(path: str) -> Optional[Dict[str, np.ndarray]]:
 
     ds = xr.open_zarr(path)
     if hasattr(ds, "data_vars") and len(ds.data_vars) > 0:
-        return {k: np.asarray(ds[k].values) for k in ds.data_vars.keys()}
+        return {k: _crop_last2(np.asarray(ds[k].values), crop_size) for k in ds.data_vars.keys()}
     return None
 
 
-def _load_zarr_events_native(path: str) -> Optional[Dict[str, np.ndarray]]:
+def _load_zarr_events_native(path: str, crop_size: Optional[int] = None) -> Optional[Dict[str, np.ndarray]]:
     try:
         import zarr
     except Exception:
         return None
 
+    # Some converted stores are laid out as a directory of per-event arrays
+    # without a root .zgroup file. Handle that shape explicitly.
+    try:
+        child_names = sorted(os.listdir(path))
+    except Exception:
+        child_names = []
+    event_dirs = [
+        name for name in child_names
+        if os.path.isfile(os.path.join(path, name, ".zarray"))
+    ]
+    if event_dirs:
+        return {
+            name: _crop_last2(np.asarray(zarr.open(os.path.join(path, name), mode="r")), crop_size)
+            for name in event_dirs
+        }
+
     z = zarr.open(path, mode="r")
     if hasattr(z, "group_keys"):
         keys = list(z.group_keys())
         if keys:
-            return {k: np.asarray(z[k]) for k in keys}
+            return {k: _crop_last2(np.asarray(z[k]), crop_size) for k in keys}
     if hasattr(z, "array_keys"):
         keys = list(z.array_keys())
         if keys:
-            return {k: np.asarray(z[k]) for k in keys}
+            return {k: _crop_last2(np.asarray(z[k]), crop_size) for k in keys}
     return None
 
 
 def load_zarr_array(path: str,
                     key: Optional[str] = None,
-                    return_events: bool = False) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+                    return_events: bool = False,
+                    crop_size: Optional[int] = None) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("zarr path is empty")
+    path = path.strip()
     if return_events:
-        events = _load_zarr_events_xarray(path)
+        events = _load_zarr_events_xarray(path, crop_size=crop_size)
         if events is None:
-            events = _load_zarr_events_native(path)
+            events = _load_zarr_events_native(path, crop_size=crop_size)
         if events:
             return events
     try:
-        arr = _open_zarr_xarray(path, key=key)
+        arr = _open_zarr_xarray(path, key=key, crop_size=crop_size)
     except Exception:
-        arr = _open_zarr_native(path)
+        arr = _open_zarr_native(path, crop_size=crop_size)
     return np.asarray(arr)
 
 

@@ -14,7 +14,6 @@ from p2igan_bench.modules.layer import (
     ResBlock_do_eval,
     InputBlock,
     DownsampleDuplicateChannels,
-    UPPos,
     UP,
     C2,
     C3,
@@ -58,9 +57,9 @@ class P2IGenerator(BaseNetwork):
 
         self.UP = nn.ModuleList(
             [
-                UPPos(in_ch=base_channel * 2, out_ch=base_channel, H=self.H, W=self.W, T=length),
-                UPPos(in_ch=base_channel * 4, out_ch=base_channel * 2, H=self.H // 2, W=self.W // 2, T=length),
-                UPPos(in_ch=base_channel * 8, out_ch=base_channel * 4, H=self.H // 4, W=self.W // 4, T=length),
+                UP(in_ch=base_channel * 2, out_ch=base_channel, H=self.H, W=self.W, T=length),
+                UP(in_ch=base_channel * 4, out_ch=base_channel * 2, H=self.H // 2, W=self.W // 2, T=length),
+                UP(in_ch=base_channel * 8, out_ch=base_channel * 4, H=self.H // 4, W=self.W // 4, T=length),
             ]
         )
 

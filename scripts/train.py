@@ -137,6 +137,8 @@ class Trainer:
 
         self.rec_loss = ReconstructionLoss(
             k1_alpha=cfg["loss"].get("k1_weight", 0.0),
+            use_pm=bool(cfg["loss"].get("use_pm", 0)),
+            pm_weight=float(cfg["loss"].get("pm_weight", 10.0)),
         )
         self.use_gan = bool(cfg["loss"].get("use_gan", 0))
         self.gan_loss_type = cfg["loss"].get("gan_loss", "hinge")

@@ -1,10 +1,10 @@
 {
   "seed": 2024,
   "device": "cuda:0",
-  "save_dir": "weights/stdk",
-  "experiment_name": "stdk",
+  "save_dir": "weights/stdkv2",
+  "experiment_name": "stdkv2 enhanced pm_loss weighted = 10.0.",
   "run_name": "debug-run-001",
-  "description": "STDK baseline.",
+  "description": "STDK baseline, with enhanced pm_loss.",
   
   "model": {
     "name": "stdk",
@@ -55,7 +55,9 @@
     "valid_weight": 1.0,
     "adversarial_weight": 0.01,
     "fractal_weight": 0.0,
-    "k1_weight": 0.0005,
+    "k1_weight": 0.05,
+    "use_pm": 1,
+    "pm_weight": 10.0,
     "temp_weight": 0.0,
     "gan_loss": "hinge",
     "use_gan": 0,

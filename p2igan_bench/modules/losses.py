@@ -8,10 +8,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchmetrics import Metric
+import math
 
 __all__ = [
     "ReconstructionLoss",
     "gan_loss",
+    "pm_loss",
     "transform",
     "weighted_l1_distance",
     "softmax_temperature",
@@ -32,8 +34,10 @@ __all__ = [
 class ReconstructionLoss:
     """Weighted reconstruction loss: pixel pool + temporal regularization."""
 
-    def __init__(self, k1_alpha: float = 0.0):
+    def __init__(self, k1_alpha: float = 0.0, use_pm: bool = False, pm_weight: float = 10.0):
         self.k1_alpha = k1_alpha
+        self.use_pm = use_pm
+        self.pm_weight = pm_weight
 
     def __call__(self, prediction: torch.Tensor, target: torch.Tensor, mask: torch.Tensor | None = None):
         # 主體使用 weighted L1；mask 參數保留以維持呼叫介面，但不再分 hole/valid。
@@ -43,9 +47,16 @@ class ReconstructionLoss:
         pred_prob = softmax_temperature(pred_diff, 0.1)
         true_prob = softmax_temperature(true_diff, 0.1)
         reg_loss = kl_divergence(pred_prob, true_prob)
+        pm_term = torch.tensor(0.0, device=prediction.device, dtype=prediction.dtype)
+        if self.use_pm:
+            pm_term = pm_loss(prediction, target, omega=self.pm_weight)
 
-        loss = pool_loss + self.k1_alpha * reg_loss
-        return loss, {"pool": float(pool_loss.detach()), "reg": float(reg_loss.detach())}
+        loss = pool_loss + self.k1_alpha * reg_loss + pm_term
+        return loss, {
+            "pool": float(pool_loss.detach()),
+            "reg": float(reg_loss.detach()),
+            "pm": float(pm_term.detach()),
+        }
 
 
 def transform(x: torch.Tensor) -> torch.Tensor:
@@ -64,6 +75,24 @@ def weighted_l1_distance(x_pred: torch.Tensor, x_true: torch.Tensor) -> torch.Te
     weight = torch.where(x_true > x_max_tensor, w_max, w)
     return torch.mean(weight * torch.abs(x_pred - x_true))
 
+
+def pm_loss(pred: torch.Tensor, target: torch.Tensor, omega: float = 10.0) -> torch.Tensor:
+    """Pixel-wise sorted marginal matching loss."""
+
+    pred = pred.float()
+    target = target.float()
+
+    pred_flat = pred.flatten(1)
+    target_flat = target.flatten(1)
+
+    k = max(1, math.ceil((1.0 - 0.99) * pred_flat.size(1)))
+
+    pred_tail = torch.topk(pred_flat, k=k, dim=1, largest=True, sorted=True).values
+    target_tail = torch.topk(target_flat, k=k, dim=1, largest=True, sorted=True).values
+
+    l_pm = torch.mean((pred_tail - target_tail) ** 2)
+
+    return omega * l_pm
 
 def softmax_temperature(tensor: torch.Tensor, temperature: float) -> torch.Tensor:
     """Apply temperature-scaled softmax over flattened spatial dims."""

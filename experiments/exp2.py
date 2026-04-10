@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from .exp1 import transform_mmhr
-from .io import align_length, crop_center, ensure_dir, ensure_thw, load_mask, mask_for_input, save_text
+from .io import align_length, crop_center, ensure_dir, ensure_thw, load_mask, save_text
 
 # Hard-coded palette for paper-style plots (matches notebook).
 _PAPER_BOUNDS = [0, 0.5, 1, 2, 4, 8, 16, 200]
@@ -22,6 +22,20 @@ _PAPER_COLORS = [
     "#ffffff",
 ]
 _PAPER_SUB = 20
+
+
+def _normalize_method_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9+]+", "", name.lower())
+
+
+def _lookup_method_path(methods: Dict[str, str], name: str) -> str | None:
+    if name in methods:
+        return methods[name]
+    normalized = _normalize_method_name(name)
+    for key, path in methods.items():
+        if _normalize_method_name(key) == normalized:
+            return path
+    return None
 
 
 def _to_uint8(frame: np.ndarray, vmin: float, vmax: float) -> np.ndarray:
@@ -68,56 +82,74 @@ def _save_combo_gif(frames_map: Dict[str, np.ndarray],
         mask_points = np.argwhere(input_mask.astype(bool))
 
     imgs = []
+    panel_width = 2.15
+    fig_height = 4.95
+    fig, axes = plt.subplots(1, len(labels), figsize=(panel_width * len(labels), fig_height), dpi=300)
+    fig.subplots_adjust(top=0.84, bottom=0.18, left=0.008, right=0.998, wspace=0.002)
+    if len(labels) == 1:
+        axes = [axes]
+
+    artists = []
+    mask_bool = input_mask.astype(bool) if input_mask is not None else None
+    masked_labels = {"input", "gauge", "radarmasked"}
+    for ax, label, frames in zip(axes, labels, frames_list):
+        if label.lower() in masked_labels and mask_bool is not None:
+            bg = ax.imshow(np.zeros_like(frames[0]), cmap="gray", vmin=0.0, vmax=1.0)
+            scatter = None
+            if mask_points is not None and mask_points.size > 0:
+                vals = frames[0][mask_bool]
+                scatter = ax.scatter(
+                    mask_points[:, 1],
+                    mask_points[:, 0],
+                    c=vals,
+                    cmap=cmap,
+                    norm=norm,
+                    s=38,
+                    edgecolors="black",
+                    linewidths=0.7,
+                    zorder=5,
+                )
+            artists.append(("masked", bg, scatter, frames))
+        else:
+            im = ax.imshow(frames[0], cmap=cmap, norm=norm)
+            artists.append(("image", im, None, frames))
+        ax.set_title(label, fontsize=15, pad=8)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect("equal", "box")
+        for s in ax.spines.values():
+            s.set_visible(False)
+
+    sm = ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(
+        sm,
+        ax=axes,
+        orientation="horizontal",
+        fraction=0.05,
+        pad=0.08,
+        ticks=_PAPER_BOUNDS,
+    )
+    tick_labels = [f"{b:g}" for b in _PAPER_BOUNDS[:-1]] + [""]
+    cbar.set_ticklabels(tick_labels)
+    cbar.set_label("Rainfall (mm/h)", fontsize=13)
+    cbar.ax.tick_params(labelsize=10)
+
+    suptitle = fig.suptitle("", fontsize=16, fontweight="bold") if title else None
     for t in range(n):
-        fig, axes = plt.subplots(1, len(labels), figsize=(3.1 * len(labels), 3.8), dpi=350)
-        fig.subplots_adjust(top=0.82, bottom=0.22, wspace=0.02)
-        if len(labels) == 1:
-            axes = [axes]
-        for ax, label, frames in zip(axes, labels, frames_list):
-            if label.lower() in {"input", "gauge"} and input_mask is not None:
-                ax.imshow(np.zeros_like(frames[t]), cmap="gray", vmin=0.0, vmax=1.0)
-                if mask_points is not None and mask_points.size > 0:
-                    vals = frames[t][input_mask.astype(bool)]
-                    ax.scatter(
-                        mask_points[:, 1],
-                        mask_points[:, 0],
-                        c=vals,
-                        cmap=cmap,
-                        norm=norm,
-                        s=18,
-                        edgecolors="#dddddd",
-                        linewidths=0.4,
-                        zorder=5,
-                    )
+        for kind, artist, scatter, frames in artists:
+            if kind == "masked":
+                if scatter is not None and mask_bool is not None:
+                    scatter.set_array(frames[t][mask_bool].ravel())
             else:
-                ax.imshow(frames[t], cmap=cmap, norm=norm)
-            ax.set_title(label, fontsize=11)
-            ax.set_xticks([])
-            ax.set_yticks([])
-            for s in ax.spines.values():
-                s.set_visible(False)
-        sm = ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-        cbar = fig.colorbar(
-            sm,
-            ax=axes,
-            orientation="horizontal",
-            fraction=0.08,
-            pad=0.18,
-            ticks=_PAPER_BOUNDS,
-        )
-        tick_labels = [f"{b:g}" for b in _PAPER_BOUNDS[:-1]] + [""]
-        cbar.set_ticklabels(tick_labels)
-        cbar.set_label("Rainfall (mm/h)", fontsize=10)
-        cbar.ax.tick_params(labelsize=8)
-        if title:
-            frame_label = f"{title} | Frame {t + 1}/{n}"
-            fig.suptitle(frame_label, fontsize=12)
+                artist.set_data(frames[t])
+        if suptitle is not None:
+            suptitle.set_text(f"{title} | Frame {t + 1}/{n}")
         fig.canvas.draw()
         w, h = fig.canvas.get_width_height()
         buf = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8).reshape(h, w, 3)
         imgs.append(Image.fromarray(buf))
-        plt.close(fig)
+    plt.close(fig)
 
     duration = int(1000 / max(fps, 1))
     imgs[0].save(out_path, save_all=True, append_images=imgs[1:], duration=duration, loop=0)
@@ -157,9 +189,25 @@ def _load_event_array(path: str, event_key: str) -> np.ndarray:
     raise FileNotFoundError(f"Missing event {event_key} in {path}")
 
 
+def _load_prepared_event(path: str,
+                         event_key: str,
+                         crop_size: int,
+                         divide_by_3: bool,
+                         cache: Dict[Tuple[str, str, int, bool], np.ndarray]) -> np.ndarray:
+    cache_key = (path, event_key, crop_size, divide_by_3)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    arr = _load_event_array(path, event_key)
+    arr = transform_mmhr(arr, divide_by_3=divide_by_3)
+    arr = crop_center(arr, crop_size)
+    cache[cache_key] = arr
+    return arr
+
+
 def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
-             truth: Union[str, np.ndarray],
              observation: Union[str, np.ndarray],
+             nimrod_path: Union[str, np.ndarray, None],
              mask_train: np.ndarray,
              out_dir: str,
              crop_size: int,
@@ -170,42 +218,54 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
              divide_by_3: bool = True,
              mode: str = "radar") -> None:
     input_label = "Gauge" if mode == "gauge" else "Input"
-    truth_label = "Radar" if mode == "gauge" else "Truth"
-    if isinstance(truth, str) and isinstance(observation, str):
-        event_keys = _list_event_keys(truth)
+    obs_label = "Radar" if mode == "gauge" else "Obs"
+    use_input_mask = True
+    if isinstance(observation, str):
+        event_keys = _list_event_keys(observation)
         if not event_keys:
-            raise FileNotFoundError(f"No event groups found in {truth}")
+            raise FileNotFoundError(f"No event groups found in {observation}")
         event_keys = event_keys[:20]
         range_lines = []
         cmap, norm, _ = _build_paper_cmap()
         max_frames = 30
+        event_cache: Dict[Tuple[str, str, int, bool], np.ndarray] = {}
         for idx, event_key in enumerate(event_keys, start=1):
-            truth_ev = _load_event_array(truth, event_key)
-            obs_ev = _load_event_array(observation, event_key)
-            truth_ev = transform_mmhr(truth_ev, divide_by_3=divide_by_3)
-            obs_ev = transform_mmhr(obs_ev, divide_by_3=divide_by_3)
-            truth_ev = crop_center(truth_ev, crop_size)[:max_frames]
-            obs_ev = crop_center(obs_ev, crop_size)[:max_frames]
-            mask_bool = mask_train.astype(bool)
-            masked_input = obs_ev * mask_bool[None, ...]
+            obs_ev = _load_prepared_event(
+                observation, event_key, crop_size, divide_by_3, event_cache
+            )[:max_frames]
+            input_ev = obs_ev
+            obs_ev_full = obs_ev
+            if mode == "gauge" and isinstance(nimrod_path, str):
+                nimrod_ev = _load_prepared_event(
+                    nimrod_path, event_key, crop_size, divide_by_3, event_cache
+                )
+                nimrod_ev, input_ev = align_length(nimrod_ev, input_ev)
+                nimrod_ev = nimrod_ev[:max_frames]
+                input_ev = input_ev[:max_frames]
+                obs_ev_full = nimrod_ev
+            else:
+                input_ev = input_ev[:max_frames]
+                obs_ev_full = obs_ev_full[:max_frames]
 
             preds_ev: Dict[str, np.ndarray] = {}
             for name, pred_src in preds.items():
                 if isinstance(pred_src, str):
-                    pred_ev = _load_event_array(pred_src, event_key)
+                    pred_ev = _load_prepared_event(
+                        pred_src, event_key, crop_size, divide_by_3, event_cache
+                    )
                 else:
                     pred_ev = pred_src
-                pred_ev = transform_mmhr(pred_ev, divide_by_3=divide_by_3)
-                pred_ev, truth_aligned = align_length(pred_ev, truth_ev)
-                pred_ev = crop_center(pred_ev, crop_size)[:max_frames]
+                pred_ev, ref_aligned = align_length(pred_ev, obs_ev_full)
+                pred_ev = pred_ev[:max_frames]
                 preds_ev[name] = pred_ev
-                truth_ev = truth_aligned
+                obs_ev_full = ref_aligned[:pred_ev.shape[0]]
+                input_ev = input_ev[:obs_ev_full.shape[0]]
 
-            total_frames = truth_ev.shape[0]
+            total_frames = min(input_ev.shape[0], obs_ev_full.shape[0])
             for pred_ev in preds_ev.values():
                 total_frames = min(total_frames, pred_ev.shape[0])
-            truth_ev = truth_ev[:total_frames]
-            masked_input = masked_input[:total_frames]
+            input_ev = input_ev[:total_frames]
+            obs_ev_full = obs_ev_full[:total_frames]
             for name in list(preds_ev.keys()):
                 preds_ev[name] = preds_ev[name][:total_frames]
 
@@ -213,8 +273,8 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
                 f"{event_key}: frames 1-{total_frames} (count={total_frames})"
             )
             combo_frames = {
-                input_label: masked_input,
-                truth_label: truth_ev,
+                input_label: input_ev,
+                obs_label: obs_ev_full,
             }
             for name, pred_ev in preds_ev.items():
                 combo_frames[name] = pred_ev
@@ -222,47 +282,54 @@ def run_exp2(preds: Dict[str, Union[str, np.ndarray]],
             title = f"{event_key} | total frames {total_frames}"
             out_path = os.path.join(out_dir, f"comparison_{event_key}.gif")
             _save_combo_gif(combo_frames, out_path, cmap, norm, gif_fps,
-                            input_mask=mask_train, title=title)
+                            input_mask=mask_train if use_input_mask else None, title=title)
 
         save_text(os.path.join(out_dir, "event_ranges.txt"), range_lines)
         return
 
-    truth_arr = np.asarray(truth)
     obs_arr = np.asarray(observation)
-    truth_arr = transform_mmhr(truth_arr, divide_by_3=divide_by_3)
     obs_arr = transform_mmhr(obs_arr, divide_by_3=divide_by_3)
-    truth_arr = crop_center(truth_arr, crop_size)
     obs_arr = crop_center(obs_arr, crop_size)
-    mask_bool = mask_train.astype(bool)
-    masked_input = obs_arr * mask_bool[None, ...]
+    input_arr = obs_arr
+    obs_arr_full = obs_arr
+    if mode == "gauge" and nimrod_path is not None:
+        nimrod_arr = np.asarray(nimrod_path)
+        nimrod_arr = transform_mmhr(nimrod_arr, divide_by_3=divide_by_3)
+        nimrod_arr, input_arr = align_length(nimrod_arr, input_arr)
+        nimrod_arr = crop_center(nimrod_arr, crop_size)
+        obs_arr_full = nimrod_arr
+    else:
+        nimrod_arr = None
 
     preds_aligned: Dict[str, np.ndarray] = {}
     for name, pred in preds.items():
         pred_arr = np.asarray(pred)
         pred_arr = transform_mmhr(pred_arr, divide_by_3=divide_by_3)
-        pred_arr, truth_aligned = align_length(pred_arr, truth_arr)
+        pred_arr, ref_aligned = align_length(pred_arr, obs_arr_full)
         pred_arr = crop_center(pred_arr, crop_size)
         preds_aligned[name] = pred_arr
-        truth_arr = truth_aligned
+        obs_arr_full = ref_aligned
+        input_arr = input_arr[:obs_arr_full.shape[0]]
 
-    total_frames = truth_arr.shape[0]
+    total_frames = min(input_arr.shape[0], obs_arr_full.shape[0])
     for pred_arr in preds_aligned.values():
         total_frames = min(total_frames, pred_arr.shape[0])
-    truth_arr = truth_arr[:total_frames]
-    masked_input = masked_input[:total_frames]
+    input_arr = input_arr[:total_frames]
+    obs_arr_full = obs_arr_full[:total_frames]
     for name in list(preds_aligned.keys()):
         preds_aligned[name] = preds_aligned[name][:total_frames]
 
     combo_frames = {
-        input_label: masked_input,
-        truth_label: truth_arr,
+        input_label: input_arr,
+        obs_label: obs_arr_full,
     }
     for name, pred_arr in preds_aligned.items():
         combo_frames[name] = pred_arr
     cmap, norm, _ = _build_paper_cmap()
     title = f"Event 01 | total frames {total_frames}"
     _save_combo_gif(combo_frames, os.path.join(out_dir, "comparison_event_01.gif"),
-                    cmap, norm, gif_fps, input_mask=mask_train, title=title)
+                    cmap, norm, gif_fps,
+                    input_mask=mask_train if use_input_mask else None, title=title)
 
 
 def _build_paper_cmap():
@@ -354,12 +421,12 @@ def _draw_block(ax_grid, images, method_order, select_idx, mask, mask_points, cm
         for m in range(images.shape[0]):
             ax = ax_grid[t, m]
             label = method_order[m]
-            if label == "RadarMasked":
+            if label in {"Input", "Gauge", "RadarMasked"}:
                 ax.imshow(np.zeros_like(images[m, t]), cmap="gray", vmin=0.0, vmax=1.0)
                 vals = images[m, t][mask == 1]
                 ax.scatter(mask_points[:, 1], mask_points[:, 0],
                            c=vals, cmap=cmap, norm=norm,
-                           s=24, edgecolors="#dddddd", linewidths=0.4, zorder=5)
+                           s=38, edgecolors="black", linewidths=0.7, zorder=5)
                 last_im = ax.images[-1] if ax.images else None
             else:
                 last_im = ax.imshow(images[m, t], cmap=cmap, norm=norm)
@@ -367,12 +434,6 @@ def _draw_block(ax_grid, images, method_order, select_idx, mask, mask_points, cm
             ax.set_yticks([])
             for s in ax.spines.values():
                 s.set_visible(False)
-
-            if method_order[m] == "Gauge":
-                vals = images[m, t][mask == 1]
-                ax.scatter(mask_points[:, 1], mask_points[:, 0],
-                           c=vals, cmap=cmap, norm=norm,
-                           s=38, edgecolors="black", linewidths=0.7, zorder=5)
 
             if t == 0:
                 ax.set_title(method_order[m], fontsize=13)
@@ -432,6 +493,7 @@ def run_exp2_paper(folders: Dict[str, str],
     cbar.ax.tick_params(labelsize=11)
 
     row_cursor = 0
+    event_cache: Dict[Tuple[str, str, int, bool], np.ndarray] = {}
     for event in events:
         ax_title = fig.add_subplot(gs[row_cursor, :])
         ax_title.axis("off")
@@ -462,12 +524,14 @@ def run_exp2_paper(folders: Dict[str, str],
 
 
 def run_exp2_paper_zarr(observation_path: str,
+                        nimrod_path: str | None,
                         methods: Dict[str, str],
                         events: Iterable[Dict[str, object]],
                         mask_path: str,
                         crop_size: int,
                         out_dir: str,
                         output_pdf: str,
+                        mode: str = "radar",
                         method_order: Iterable[str] | None = None,
                         crop_pdf: bool = False,
                         crop_output: str = "cropped_stitched.pdf",
@@ -487,8 +551,10 @@ def run_exp2_paper_zarr(observation_path: str,
     mask_points = np.argwhere(mask == 1)
 
     if method_order is None:
-        method_order = tuple(["RadarMasked", "Nimrod"] + list(methods.keys()))
+        method_order = tuple(list(methods.keys()))
     method_order = list(method_order)
+    prefix_labels = ["Gauge", "Radar"] if mode == "gauge" else ["Input", "Obs"]
+    method_order = prefix_labels + [m for m in method_order if m not in {"Input", "Obs", "Gauge", "Radar", "Nimrod", "RadarMasked"}]
     events = list(events)
     ncols = len(method_order)
     nrows_each = len(events[0]["select_idx"])
@@ -508,6 +574,7 @@ def run_exp2_paper_zarr(observation_path: str,
     cbar.ax.tick_params(labelsize=11)
 
     row_cursor = 0
+    event_cache: Dict[Tuple[str, str, int, bool], np.ndarray] = {}
     for event in events:
         ax_title = fig.add_subplot(gs[row_cursor, :])
         ax_title.axis("off")
@@ -523,28 +590,34 @@ def run_exp2_paper_zarr(observation_path: str,
 
         event_key = _event_key(int(event["event_id"]))
         select_idx = list(event["select_idx"])
-        obs_ev = _load_event_array(observation_path, event_key)
-        obs_ev = transform_mmhr(obs_ev, divide_by_3=True)
-        obs_ev = crop_center(obs_ev, crop_size)
+        obs_ev = _load_prepared_event(
+            observation_path, event_key, crop_size, True, event_cache
+        )
+        nimrod_ev = None
+        if nimrod_path:
+            nimrod_ev = _load_prepared_event(
+                nimrod_path, event_key, crop_size, True, event_cache
+            )
 
         images = []
         labels = []
         for method in method_order:
             labels.append(method)
             frames = []
-            if method == "RadarMasked":
+            if method in {"Input", "Gauge", "RadarMasked"}:
                 source = obs_ev
-            elif method == "Nimrod":
-                source = obs_ev
+            elif method in {"Obs"}:
+                source = nimrod_ev if (mode == "gauge" and nimrod_ev is not None) else obs_ev
+            elif method in {"Radar", "Nimrod"}:
+                source = nimrod_ev if nimrod_ev is not None else obs_ev
             else:
-                method_path = methods.get(method)
+                method_path = _lookup_method_path(methods, method)
                 if not method_path:
                     source = None
                 else:
-                    pred_ev = _load_event_array(method_path, event_key)
-                    pred_ev = transform_mmhr(pred_ev, divide_by_3=True)
-                    pred_ev = crop_center(pred_ev, crop_size)
-                    source = pred_ev
+                    source = _load_prepared_event(
+                        method_path, event_key, crop_size, True, event_cache
+                    )
 
             for idx in select_idx:
                 if source is None or idx >= source.shape[0]:

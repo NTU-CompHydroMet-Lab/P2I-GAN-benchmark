@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import torch
 import torch.nn.functional as F
+from scipy.ndimage import uniform_filter
 
 from .io import align_length, crop_center, ensure_thw, select_by_mask
 
@@ -17,50 +18,73 @@ def rmse(pred: np.ndarray, gt: np.ndarray) -> float:
     return float(np.sqrt(np.mean((pred - gt) ** 2)))
 
 
+def mean_frame_psnr(pred: np.ndarray, gt: np.ndarray, max_value: float = 200.0) -> float:
+    pred = np.asarray(pred, dtype=np.float64)
+    gt = np.asarray(gt, dtype=np.float64)
+    if pred.ndim != 2 or gt.ndim != 2:
+        raise ValueError("Expected masked frame arrays with shape [T, N]")
+
+    finite = np.isfinite(pred) & np.isfinite(gt)
+    if not np.any(finite):
+        return float("nan")
+
+    pred_safe = np.where(finite, pred, 0.0)
+    gt_safe = np.where(finite, gt, 0.0)
+    counts = finite.sum(axis=1)
+    valid = counts > 0
+    if not np.any(valid):
+        return float("nan")
+
+    mse = np.divide(
+        ((pred_safe - gt_safe) ** 2 * finite).sum(axis=1),
+        counts,
+        out=np.full(pred.shape[0], np.nan, dtype=np.float64),
+        where=valid,
+    )
+    psnr = np.full(pred.shape[0], np.nan, dtype=np.float64)
+    positive = valid & (mse > 0)
+    psnr[positive] = 20.0 * np.log10(max_value) - 10.0 * np.log10(mse[positive])
+    psnr[valid & (mse == 0)] = float("inf")
+
+    finite_psnr = psnr[np.isfinite(psnr)]
+    if finite_psnr.size == 0:
+        return float("nan")
+    return float(np.mean(finite_psnr))
+
+
 def pss(pred: np.ndarray,
         gt: np.ndarray,
         bins: int = 50,
         min_value: float = 0.5,
         value_range: Optional[Tuple[float, float]] = None) -> float:
-    pred = np.asarray(pred, dtype=np.float32)
-    gt = np.asarray(gt, dtype=np.float32)
+    pred = np.asarray(pred, dtype=np.float32).ravel()
+    gt = np.asarray(gt, dtype=np.float32).ravel()
+
+    pred = pred[np.isfinite(pred)]
+    gt = gt[np.isfinite(gt)]
+
+    if min_value is not None:
+        pred = pred[pred > min_value]
+        gt = gt[gt > min_value]
+
     if pred.size == 0 or gt.size == 0:
         return float("nan")
 
     if value_range is None:
-        both = np.concatenate([pred.ravel(), gt.ravel()])
-        both = both[np.isfinite(both)]
-        if min_value is not None:
-            both = both[both > min_value]
-        if both.size == 0:
-            return float("nan")
+        both = np.concatenate([pred, gt])
         vmin = float(both.min())
         vmax = float(both.max())
         if vmin == vmax:
             vmax = vmin + 1e-6
         value_range = (vmin, vmax)
 
-    t = pred.shape[0]
-    scores = []
-    for i in range(t):
-        p = pred[i].ravel()
-        g = gt[i].ravel()
-        p = p[np.isfinite(p)]
-        g = g[np.isfinite(g)]
-        if min_value is not None:
-            p = p[p > min_value]
-            g = g[g > min_value]
-        if p.size == 0 or g.size == 0:
-            continue
-        p_hist, _ = np.histogram(p, bins=bins, range=value_range)
-        g_hist, _ = np.histogram(g, bins=bins, range=value_range)
-        p_freq = p_hist / (p_hist.sum() + 1e-12)
-        g_freq = g_hist / (g_hist.sum() + 1e-12)
-        scores.append(float(np.minimum(p_freq, g_freq).sum()))
+    p_hist, _ = np.histogram(pred, bins=bins, range=value_range)
+    g_hist, _ = np.histogram(gt, bins=bins, range=value_range)
 
-    if not scores:
-        return float("nan")
-    return float(np.mean(scores))
+    p_freq = p_hist / (p_hist.sum() + 1e-12)
+    g_freq = g_hist / (g_hist.sum() + 1e-12)
+
+    return float(np.minimum(p_freq, g_freq).sum())
 
 
 def ssim2d(a: np.ndarray, b: np.ndarray, c1: float = 0.01**2, c2: float = 0.03**2) -> float:
@@ -92,50 +116,75 @@ def _pool8(x: torch.Tensor) -> torch.Tensor:
     return y.view(b, t, c, y.shape[-2], y.shape[-1])
 
 
-def _ssim2d_torch(a: torch.Tensor, b: torch.Tensor, c1: float = 0.01**2, c2: float = 0.03**2) -> torch.Tensor:
-    mu_a = a.mean()
-    mu_b = b.mean()
-    sig_a = ((a - mu_a) ** 2).mean()
-    sig_b = ((b - mu_b) ** 2).mean()
-    sig_ab = ((a - mu_a) * (b - mu_b)).mean()
+def _ssim_reduce_torch(a: torch.Tensor,
+                       b: torch.Tensor,
+                       c1: float = 0.01**2,
+                       c2: float = 0.03**2,
+                       dims: Tuple[int, ...] = (-2, -1)) -> torch.Tensor:
+    mu_a = a.mean(dim=dims, keepdim=True)
+    mu_b = b.mean(dim=dims, keepdim=True)
+    sig_a = ((a - mu_a) ** 2).mean(dim=dims, keepdim=True)
+    sig_b = ((b - mu_b) ** 2).mean(dim=dims, keepdim=True)
+    sig_ab = ((a - mu_a) * (b - mu_b)).mean(dim=dims, keepdim=True)
     num = (2 * mu_a * mu_b + c1) * (2 * sig_ab + c2)
     den = (mu_a**2 + mu_b**2 + c1) * (sig_a + sig_b + c2)
-    return num / (den + 1e-10)
+    out = num / (den + 1e-10)
+    reduce_dims = sorted(((d if d >= 0 else out.ndim + d) for d in dims), reverse=True)
+    for d in reduce_dims:
+        out = out.squeeze(d)
+    return out
 
 
-def _tssim_series(x: torch.Tensor, lag: int) -> torch.Tensor:
-    vals = []
-    for t in range(lag, x.shape[1]):
-        lst = [_ssim2d_torch(x[b, t, 0], x[b, t - lag, 0]) for b in range(x.shape[0])]
-        vals.append(torch.stack(lst))
-    return torch.stack(vals, dim=0).T
+def _prepare_spatiotemporal_tensors(pred: np.ndarray,
+                                    gt: np.ndarray,
+                                    use_pool8: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+    pred_t = _ensure_btchw(_to_tensor(pred))
+    gt_t = _ensure_btchw(_to_tensor(gt))
+    if use_pool8:
+        pred_t = _pool8(pred_t)
+        gt_t = _pool8(gt_t)
+    return pred_t[:, :, 0], gt_t[:, :, 0]
+
+
+def _masked_series(pred: np.ndarray, gt: np.ndarray, mask: np.ndarray, mode: str) -> Tuple[np.ndarray, np.ndarray]:
+    masked = _apply_mask_mode(pred, gt, mask, mode)
+    return masked["pred"], masked["gt"]
+
+
+def _ssim_series_masked(pred: np.ndarray, gt: np.ndarray, mask: np.ndarray, mode: str) -> float:
+    pred_sel, gt_sel = _masked_series(pred, gt, mask, mode)
+    pred_t = torch.from_numpy(pred_sel).float()
+    gt_t = torch.from_numpy(gt_sel).float()
+    vals = _ssim_reduce_torch(pred_t, gt_t, dims=(-1,))
+    return float(vals.mean().item())
+
+
+def _dtssim_series_masked(pred: np.ndarray, gt: np.ndarray, mask: np.ndarray, mode: str, lag: int) -> float:
+    pred_sel, gt_sel = _masked_series(pred, gt, mask, mode)
+    pred_t = torch.from_numpy(pred_sel).float()
+    gt_t = torch.from_numpy(gt_sel).float()
+    if pred_t.shape[0] <= lag:
+        return float("nan")
+    pred_diff = pred_t[lag:] - pred_t[:-lag]
+    gt_diff = gt_t[lag:] - gt_t[:-lag]
+    vals = _ssim_reduce_torch(pred_diff, gt_diff, dims=(-1,))
+    return float(vals.mean().item())
 
 
 def ssim_spatial(pred: np.ndarray, gt: np.ndarray, use_pool8: bool = True) -> float:
-    pred = _ensure_btchw(_to_tensor(pred))
-    gt = _ensure_btchw(_to_tensor(gt))
-    if use_pool8:
-        pred = _pool8(pred)
-        gt = _pool8(gt)
-    bsz, t = pred.shape[0], pred.shape[1]
-    vals = []
-    for b in range(bsz):
-        for ti in range(t):
-            vals.append(_ssim2d_torch(pred[b, ti, 0], gt[b, ti, 0]))
-    return float(torch.stack(vals).mean().item())
+    pred_t, gt_t = _prepare_spatiotemporal_tensors(pred, gt, use_pool8=use_pool8)
+    vals = _ssim_reduce_torch(pred_t, gt_t)
+    return float(vals.mean().item())
 
 
 def delta_tssim(pred: np.ndarray, gt: np.ndarray, lag: int = 1, use_pool8: bool = True) -> float:
-    pred = _ensure_btchw(_to_tensor(pred))
-    gt = _ensure_btchw(_to_tensor(gt))
-    if pred.shape[1] <= lag:
+    pred_t, gt_t = _prepare_spatiotemporal_tensors(pred, gt, use_pool8=use_pool8)
+    if pred_t.shape[1] <= lag:
         return float("nan")
-    if use_pool8:
-        pred = _pool8(pred)
-        gt = _pool8(gt)
-    t_pred = _tssim_series(pred, lag)
-    t_gt = _tssim_series(gt, lag)
-    return float((t_pred - t_gt).mean().item())
+    pred_diff = pred_t[:, lag:] - pred_t[:, :-lag]
+    gt_diff = gt_t[:, lag:] - gt_t[:, :-lag]
+    vals = _ssim_reduce_torch(pred_diff, gt_diff)
+    return float(vals.mean().item())
 
 
 def nse(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -144,14 +193,43 @@ def nse(pred: np.ndarray, gt: np.ndarray) -> float:
     return float(1.0 - num / (den + 1e-10))
 
 
+def mean_nonnegative_frame_nse(pred: np.ndarray, gt: np.ndarray) -> float:
+    pred = np.asarray(pred, dtype=np.float64)
+    gt = np.asarray(gt, dtype=np.float64)
+    if pred.ndim != 2 or gt.ndim != 2:
+        raise ValueError("Expected masked frame arrays with shape [T, N]")
+    finite = np.isfinite(pred) & np.isfinite(gt)
+    if not np.any(finite):
+        return float("nan")
+
+    pred_safe = np.where(finite, pred, 0.0)
+    gt_safe = np.where(finite, gt, 0.0)
+    counts = finite.sum(axis=1)
+    valid = counts > 0
+    if not np.any(valid):
+        return float("nan")
+
+    gt_mean = np.divide(
+        gt_safe.sum(axis=1),
+        counts,
+        out=np.zeros(pred.shape[0], dtype=np.float64),
+        where=valid,
+    )
+    num = ((pred_safe - gt_safe) ** 2 * finite).sum(axis=1)
+    den = (((gt_safe - gt_mean[:, None]) ** 2) * finite).sum(axis=1)
+    nse_frames = np.full(pred.shape[0], np.nan, dtype=np.float64)
+    nse_frames[valid] = 1.0 - num[valid] / (den[valid] + 1e-10)
+    nse_frames = nse_frames[np.isfinite(nse_frames) & (nse_frames >= 0.0)]
+    if nse_frames.size == 0:
+        return float("nan")
+    return float(np.mean(nse_frames))
+
+
 def transform_mmhr(arr: np.ndarray, divide_by_3: bool = True) -> np.ndarray:
     arr = np.asarray(arr, dtype=np.float64)
-    arr = np.maximum(arr, 0.001)
     if divide_by_3:
         arr = arr / 3.0
-    # Prevent overflow: 10**x overflows beyond ~1e308 for float64.
-    exp = np.clip(arr * 0.0625, a_min=None, a_max=38.0)
-    out = 10 ** exp * 0.036
+    out = 10 ** (arr * 0.0625) * 0.036
     return np.clip(out, 0.0, 200.0)
 
 
@@ -176,6 +254,29 @@ def categorical_metrics(pred: np.ndarray, gt: np.ndarray, threshold: float) -> D
     return {"POD": float(pod), "FAR": float(far), "CSI": float(csi), "HSS": float(hss)}
 
 
+def fss_window(obs: np.ndarray,
+               pred: np.ndarray,
+               threshold: float,
+               win: int,
+               valid_mask: Optional[np.ndarray] = None) -> float:
+    obs = ensure_thw(obs).astype(np.float32, copy=False)
+    pred = ensure_thw(pred).astype(np.float32, copy=False)
+    obs_bin = (obs >= threshold).astype(np.float32)
+    pred_bin = (pred >= threshold).astype(np.float32)
+    obs_frac = uniform_filter(obs_bin, size=(1, win, win), mode="constant")
+    pred_frac = uniform_filter(pred_bin, size=(1, win, win), mode="constant")
+    if valid_mask is not None:
+        valid_mask = np.asarray(valid_mask, dtype=bool)
+        if valid_mask.shape != obs.shape[1:]:
+            raise ValueError(f"Mask shape {valid_mask.shape} != data shape {obs.shape[1:]}")
+        num = np.mean(((obs_frac - pred_frac)[:, valid_mask]) ** 2)
+        denom = np.mean((obs_frac[:, valid_mask] ** 2) + (pred_frac[:, valid_mask] ** 2))
+    else:
+        num = np.mean((obs_frac - pred_frac) ** 2)
+        denom = np.mean(obs_frac ** 2 + pred_frac ** 2)
+    return float(1.0 - num / (denom + 1e-10))
+
+
 def _apply_mask_mode(pred: np.ndarray, gt: np.ndarray, mask: np.ndarray, mode: str) -> Dict[str, np.ndarray]:
     if mode == "radar":
         pred_sel = select_by_mask(pred, mask, invert=True)
@@ -194,8 +295,10 @@ def run_exp1(preds: Dict[str, Union[np.ndarray, Dict[str, np.ndarray]]],
              mode: str,
              crop_size: int,
              thresholds: Tuple[float, ...] = (0.5, 2.0, 4.0, 8.0),
+             fss_scales: Tuple[int, ...] = (1, 2, 4, 8),
              use_pool8: bool = True,
-             divide_by_3: bool = True) -> Dict[str, Dict[str, float]]:
+             divide_by_3: bool = True,
+             progress: bool = False) -> Dict[str, Dict[str, float]]:
     if isinstance(truth, dict):
         event_keys = list(truth.keys())
         if not event_keys:
@@ -215,28 +318,56 @@ def run_exp1(preds: Dict[str, Union[np.ndarray, Dict[str, np.ndarray]]],
         truth = truth_arr
 
     results: Dict[str, Dict[str, float]] = {}
-    truth = transform_mmhr(truth, divide_by_3=divide_by_3)
-    truth = crop_center(truth, crop_size)
+    truth_raw_cropped = crop_center(truth, crop_size)
+    truth_mmhr_cropped = transform_mmhr(truth_raw_cropped, divide_by_3=divide_by_3)
+    pred_items = list(preds.items())
+    total_methods = len(pred_items)
+    fss_mask = mask if mode == "gauge" else ~mask
+    if progress:
+        print(f"[exp1] Starting metrics for {total_methods} methods")
 
-    for name, pred in preds.items():
-        pred = transform_mmhr(pred, divide_by_3=divide_by_3)
-        pred, truth_aligned = align_length(pred, truth)
-        pred = crop_center(pred, crop_size)
-        masked = _apply_mask_mode(pred, truth_aligned, mask, mode)
-        pred_sel = masked["pred"]
-        gt_sel = masked["gt"]
+    for idx, (name, pred) in enumerate(pred_items, start=1):
+        if progress:
+            print(f"[exp1] [{idx}/{total_methods}] Computing {name}")
+        pred_raw, truth_raw_aligned = align_length(pred, truth_raw_cropped)
+        pred_raw_cropped = crop_center(pred_raw, crop_size)
+        pred_mmhr_cropped = transform_mmhr(pred_raw_cropped, divide_by_3=divide_by_3)
+        _, truth_mmhr_aligned = align_length(pred_mmhr_cropped, truth_mmhr_cropped)
+        masked_mmhr = _apply_mask_mode(pred_mmhr_cropped, truth_mmhr_aligned, mask, mode)
+        pred_sel = masked_mmhr["pred"]
+        gt_sel = masked_mmhr["gt"]
+        masked_raw = _apply_mask_mode(pred_raw_cropped, truth_raw_aligned, mask, mode)
+        pred_sel_raw = masked_raw["pred"]
+        gt_sel_raw = masked_raw["gt"]
 
+        # results[name] = {
+        #     "PSNR": mean_frame_psnr(pred_sel, gt_sel),
+        # }
+
+        
         results[name] = {
+            
             "MAE": mae(pred_sel, gt_sel),
             "RMSE": rmse(pred_sel, gt_sel),
-            "PSS": pss(pred_sel, gt_sel),
-            "SSIM": ssim_spatial(pred, truth_aligned, use_pool8=use_pool8),
-            "DTSSIM_L1": delta_tssim(pred, truth_aligned, lag=1, use_pool8=use_pool8),
-            "DTSSIM_L2": delta_tssim(pred, truth_aligned, lag=2, use_pool8=use_pool8),
-            "NSE": nse(pred_sel, gt_sel),
+            "PSS": pss(pred_sel_raw, gt_sel_raw),
+            "SSIM": _ssim_series_masked(pred_mmhr_cropped, truth_mmhr_aligned, mask, mode),
+            # "DTSSIM_L1": _dtssim_series_masked(pred_mmhr_cropped, truth_mmhr_aligned, mask, mode, lag=1),
+            # "DTSSIM_L2": _dtssim_series_masked(pred_mmhr_cropped, truth_mmhr_aligned, mask, mode, lag=2),
+            # "NSE": mean_nonnegative_frame_nse(pred_sel, gt_sel),
         }
         for thr in thresholds:
             key = f"CAT_{thr:g}"
             results[name][key] = categorical_metrics(pred_sel, gt_sel, thr)
+            for scale in fss_scales:
+                fss_key = f"FSS_{thr:g}_{scale}x{scale}"
+                results[name][fss_key] = fss_window(
+                    truth_mmhr_aligned,
+                    pred_mmhr_cropped,
+                    threshold=thr,
+                    win=scale,
+                    valid_mask=fss_mask,
+                )
 
+    if progress:
+        print("[exp1] Metrics complete")
     return results

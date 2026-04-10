@@ -167,6 +167,7 @@ datasets
 │   └── .zattrs
 ```
 
+
 ---
 
 ## Zarr Data Conventions
@@ -208,7 +209,7 @@ Run one of the following commands for training:
 ```shell
  # For training P2IGAN
  python scripts/train.py --config p2igan_bench/config/p2igan_gan_baseline.json
-
+ 
  # For monitoring in mlflow
  mlflow ui --backend-store-uri file:<project_path>/mlruns --port 5000
 
@@ -216,6 +217,10 @@ Run one of the following commands for training:
  python scripts/infer.py --config p2igan_bench/config/p2igan_gan_baseline.json
 
 ```
+<!-- 
+python scripts/infer.py   --config p2igan_bench/config/p2igan_ganwopos_baseline.json   --output /home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2iganwopos_nimrod.zarr   --overwrite
+
+python scripts/infer.py   --config p2igan_bench/config/p2igan_ganwopos_baseline_gauge.json   --output /home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2iganwopos_gauge.zarr   --overwrite -->
 
 ## Evaluation
 Run one of the following commands for evaluation:

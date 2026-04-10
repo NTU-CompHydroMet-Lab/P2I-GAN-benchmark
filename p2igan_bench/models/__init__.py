@@ -6,6 +6,8 @@ import torch.nn as nn
 
 from .dk import DKGenerator
 from .p2igan import P2IDiscriminator, P2IGenerator
+from .p2iganwopos import P2IDiscriminator as P2IDiscriminatorWoPos
+from .p2iganwopos import P2IGenerator as P2IGeneratorWoPos
 from .simple import SimpleDiscriminator, SimpleGenerator
 from .stdk import STDKGenerator
 
@@ -19,6 +21,8 @@ def build_generator(cfg: Dict[str, Any]) -> nn.Module:
 
     if model_name == "p2igan":
         return P2IGenerator(cfg)
+    if model_name == "p2iganwopos":
+        return P2IGeneratorWoPos(cfg)
     if model_name == "dk":
         data_cfg = cfg.get("data_loader") or cfg.get("data", {}).get("train", {})
         sample_length = data_cfg.get("sample_length", 16)
@@ -42,6 +46,11 @@ def build_discriminator(cfg: Dict[str, Any]) -> nn.Module:
         sample_length = data_cfg.get("sample_length", 16)
         seq_channels = in_channels * sample_length
         return P2IDiscriminator(in_channels=seq_channels)
+    if model_name == "p2iganwopos":
+        data_cfg = cfg.get("data_loader") or cfg.get("data", {}).get("train", {})
+        sample_length = data_cfg.get("sample_length", 16)
+        seq_channels = in_channels * sample_length
+        return P2IDiscriminatorWoPos(in_channels=seq_channels)
 
     return SimpleDiscriminator(in_channels=in_channels, base_channels=base_channels)
 
@@ -53,6 +62,8 @@ __all__ = [
     "SimpleDiscriminator",
     "P2IGenerator",
     "P2IDiscriminator",
+    "P2IGeneratorWoPos",
+    "P2IDiscriminatorWoPos",
     "DKGenerator",
     "STDKGenerator",
 ]

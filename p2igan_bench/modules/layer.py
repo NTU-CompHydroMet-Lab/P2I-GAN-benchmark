@@ -398,6 +398,20 @@ class UPPos(nn.Module):
         x = self.proj(x)
         return F.relu(x, inplace=True)
 
+class UP(nn.Module):
+    def __init__(self, in_ch, out_ch, T, H, W):
+        super().__init__()
+        self.T = T
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.proj = nn.Conv2d(in_ch, out_ch, kernel_size=1, bias=True)
+
+    def forward(self, x):
+        B, C, _, _ = x.shape
+        x = self.up(x)
+        x = self.proj(x)
+        return F.relu(x, inplace=True)
+
+
 
 def C2(cin, cout, k=3, s=1, p=1):
     return nn.utils.spectral_norm(nn.Conv2d(cin, cout, kernel_size=k, stride=s, padding=p))
