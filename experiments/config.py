@@ -14,13 +14,13 @@ class ModeConfig:
 
 @dataclass
 class ExperimentConfig:
-    experiment_name: str = "exp1_pm_v3_radar"
-    description: str = "PM evaluation test if pm loss enhence model performance."
+    experiment_name: str = "exp12_pm_v3_dkstdk"
+    description: str = "evaluation of DK and STDK methods in different loss functions."
     save_dir: str = "results"
     mode: str = "radar"  # "radar" or "gauge"
-    run_exp1: bool = True
+    run_exp1: bool = False
     run_exp2_gif: bool = False
-    run_exp2_pdf: bool = False
+    run_exp2_pdf: bool = True
     run_exp3: bool = False
     crop_size: int = 128
     visualization_vmin: float = 0.0
@@ -30,14 +30,23 @@ class ExperimentConfig:
     exp2_paper_output_pdf: str = "two_events_stacked_titles.pdf"
     exp2_paper_crop_output: str = "cropped_stitched.pdf"
     exp2_paper_mask_path: Optional[str] = None
+    # exp2_paper_radar_method_order: Tuple[str, ...] = (
+    #     "Radar",
+    #     "P2I-GAN+",
+    #     "P2I-GAN",
+    #     "DK",
+    #     "STDK",
+    #     "OK",
+    #     "RBF",
+    # )
     exp2_paper_radar_method_order: Tuple[str, ...] = (
-        "Radar",
-        "P2I-GAN+",
-        "P2I-GAN",
-        "DK",
-        "STDK",
-        "OK",
-        "RBF",
+        "Obs", 
+        "DK (Full)", 
+        "STDK (Full)", 
+        "DK (w/o pm)", 
+        "STDK (w/o pm)", 
+        "DK (mse loss)", 
+        "STDK (mse loss)",  
     )
     exp2_paper_gauge_method_order: Tuple[str, ...] = (
         "Gauge",
@@ -87,25 +96,45 @@ def build_config() -> ExperimentConfig:
             "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/nimrod/nimrod_test.zarr"
         ),
         methods={
-            "P2I-GAN+": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_gan_baseline_v3_pm_nimrod.zarr"
-            ),
-            "P2I-GAN": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_baseline_v3_pm_nimrod.zarr"
-            ),
-            "DK": (
+            "DK (Full)": (
                 "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/dk_v3_pm_nimrod.zarr"
             ),
-            "STDK": (
+            "STDK (Full)": (
                 "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_nimrod.zarr"
             ),
-            "OK": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/ok_nimrod.zarr"
+            "DK (w/o pm)": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/dk_nimrod.zarr"
             ),
-            "RBF": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/rbf_nimrod.zarr"
+            "STDK (w/o pm)": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/stdk_nimrod.zarr"
+            ),
+            "DK (mse loss)": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/dk_mse_nimrod.zarr"
+            ),
+            "STDK (mse loss)": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/stdk_nimrod.zarr"
             ),
         },
+        # methods={
+        #     "P2I-GAN+": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_gan_baseline_v3_pm_nimrod.zarr"
+        #     ),
+        #     "P2I-GAN": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_baseline_v3_pm_nimrod.zarr"
+        #     ),
+        #     "DK": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/dk_v3_pm_nimrod.zarr"
+        #     ),
+        #     "STDK": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_nimrod.zarr"
+        #     ),
+        #     "OK": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/ok_nimrod.zarr"
+        #     ),
+        #     "RBF": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/rbf_nimrod.zarr"
+        #     ),
+        # },
         mask_train_path=(
             "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/masks/gauge_mask_128_train.txt"
         ),
