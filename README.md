@@ -67,9 +67,8 @@ This repository provides training scripts, data preprocessing workflows, visuali
  
 ## Get Started
 ### Prepare pretrained models
-Download our pretrained models from [Releases V0.1.0](https://drive.google.com/drive/folders/12Yz7JDCZiR-BESAiTT0Ypp6b-7KJfpv9?usp=sharing)
+Download our pretrained models from [Releases V0.1.0](https://drive.google.com/drive/folders/12Yz7JDCZiR-BESAiTT0Ypp6b-7KJfpv9?usp=sharing) The directory structure is arranged as:
 
-The directory structure will be arranged as:
 ```
 folder
    |- dk
