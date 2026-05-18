@@ -12,15 +12,11 @@ This repository provides training scripts, data preprocessing workflows, visuali
 </div>
 
 ## Update
+
+- **2026.05.18**: Update model weight of P2IGAN, DK, STDK, and Midas dataset.
 - **2026.02.10**: Our code and model are publicly available. 🐳 
 - **2025.12.24**: The training pipelines are updated.
 - **2025.12.06**: This repo is created.
-
-
-### TODO
-- [ ] make model output with emsemble.
-- [ ] make model output with KAN
-- [ ] make model output with DEUCE v1.0 framework (for uncertainty)
 
 
 ## Results
@@ -71,23 +67,31 @@ This repository provides training scripts, data preprocessing workflows, visuali
  
 ## Get Started
 ### Prepare pretrained models
-Download our pretrained models from [Releases V0.1.0](https://drive.google.com/file/d/1oPkmll4_5NlkVTdDr57Bhr4UbWi-Fruw/view?usp=drive_link)
+Download our pretrained models from [Releases V0.1.0](https://drive.google.com/drive/folders/12Yz7JDCZiR-BESAiTT0Ypp6b-7KJfpv9?usp=sharing)
 
 The directory structure will be arranged as:
 ```
-weights
-   |- test
-      |- P2IGANv0.1.0.pt
+folder
+   |- dk
+      |- latest.pt
+   |- stdk
+      |- latest.pt
+   |- p2igan
+      |- latest.pt
+   |- p2igan_plus
+      |- latest.pt
+   |- midas
+      |- midas_test.zarr
 ```
 
 ### Inference with Fake Data
 
-Since we cannot share the original Nimrod (radar) or MIDAS (gauge) datasets with you, we provide a small fake dataset instead. You can just use code here to see the result.
+Since we cannot share the original Nimrod (radar) with you, we provide MIDAS (gauge) datasets we use in our experiment instead. After downloaded the datasets, you can just use code here to see the result.
 
 ```bash
 python scripts/infer.py \
-  --config p2igan_bench/config/p2igan_baseline_eval.json \
-  --experiment-name p2igan-eval-fakedata
+  --config p2igan_bench/config/p2igan_gan_baseline.json \
+  --output your_path/datasets/infer/p2iganwopos_gauge.zarr 
 ```
 
 ## Dataset Preparation
@@ -216,11 +220,10 @@ Run one of the following commands for training:
   # For infer P2IGAN
  python scripts/infer.py --config p2igan_bench/config/p2igan_gan_baseline.json
 
-```
-<!-- 
-python scripts/infer.py   --config p2igan_bench/config/p2igan_ganwopos_baseline.json   --output /home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2iganwopos_nimrod.zarr   --overwrite
+ python scripts/infer.py --config p2igan_bench/config/p2igan_gan_baseline.json
 
-python scripts/infer.py   --config p2igan_bench/config/p2igan_ganwopos_baseline_gauge.json   --output /home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2iganwopos_gauge.zarr   --overwrite -->
+```
+
 
 ## Evaluation
 Run one of the following commands for evaluation:

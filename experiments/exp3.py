@@ -78,6 +78,7 @@ def _prepare_xy(pred, true, min_value: float, residual: bool = False):
     x = tf[m]
     y = (pf[m] - tf[m]) if residual else pf[m]
     keep = x >= min_value
+    # keep = np.ones_like(x, dtype=bool)
     return x[keep], y[keep]
 
 
@@ -384,7 +385,7 @@ def run_exp3(preds: Dict[str, Union[np.ndarray, Dict[str, np.ndarray]]],
         max_points=20000,
         alpha=0.6,
         s=10,
-        min_value=0.1,
+        min_value=0.0,
         save_path=os.path.join(out_dir, "scatter_panels.pdf"),
     )
 

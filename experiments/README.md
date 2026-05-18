@@ -26,6 +26,8 @@ Set in `experiments/config.py`:
 - `exp2_paper_enabled = True`
 - `exp2_paper_folders`: map method names to PNG folders (expects `rain{event_id}` subfolders).
 - `exp2_paper_events`: list of `{event_id, select_idx, title}`.
+- `exp2_paper_one_event_per_pdf`: `True` means one PDF per event; `False` means all events are stacked into one PDF.
+- `exp2_paper_output_template`: filename template for per-event output, supports `{event_idx}` and `{event_id}`.
 
 Output will be written to:
 - `experiments/results/<experiment_name>/exp2/<output_pdf>`

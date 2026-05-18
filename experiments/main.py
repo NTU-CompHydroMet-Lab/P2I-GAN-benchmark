@@ -60,6 +60,11 @@ def _format_metric_value(value):
     return f"{value:.4f}" if isinstance(value, (int, float)) else str(value)
 
 
+def _build_exp2_event_pdf_name(template, event, event_idx):
+    event_id = int(event["event_id"])
+    return template.format(event_id=event_id, event_idx=event_idx)
+
+
 def _build_exp1_tables(metrics):
     if not metrics:
         return ["No metrics generated."]
@@ -248,24 +253,53 @@ def main() -> None:
             if cfg.mode == "radar"
             else cfg.exp2_paper_gauge_method_order
         )
-        run_exp2_paper_zarr(
-            observation_path=observation_path,
-            nimrod_path=nimrod_path,
-            methods=method_paths,
-            events=cfg.exp2_paper_events,
-            mask_path=mask_path,
-            crop_size=cfg.crop_size,
-            out_dir=exp2_pdf_dir,
-            output_pdf=cfg.exp2_paper_output_pdf,
-            mode=cfg.mode,
-            method_order=method_order,
-            crop_pdf=False,
-            crop_output=cfg.exp2_paper_crop_output,
-            crop_y_ranges=((0.019, 0.5), (0.58, 1.0)),
-            crop_zoom=3.0,
-            crop_margin_left=0.0,
-            crop_margin_right=0.0,
-        )
+        if not cfg.exp2_paper_events:
+            raise ValueError("exp2_paper_events is empty in experiments/config.py")
+
+        if cfg.exp2_paper_one_event_per_pdf:
+            for event_idx, event in enumerate(cfg.exp2_paper_events, start=1):
+                output_pdf = _build_exp2_event_pdf_name(
+                    cfg.exp2_paper_output_template,
+                    event,
+                    event_idx,
+                )
+                run_exp2_paper_zarr(
+                    observation_path=observation_path,
+                    nimrod_path=nimrod_path,
+                    methods=method_paths,
+                    events=(event,),
+                    mask_path=mask_path,
+                    crop_size=cfg.crop_size,
+                    out_dir=exp2_pdf_dir,
+                    output_pdf=output_pdf,
+                    mode=cfg.mode,
+                    method_order=method_order,
+                    crop_pdf=False,
+                    crop_output=cfg.exp2_paper_crop_output,
+                    crop_y_ranges=((0.019, 0.5), (0.58, 1.0)),
+                    crop_zoom=3.0,
+                    crop_margin_left=0.0,
+                    crop_margin_right=0.0,
+                )
+        else:
+            run_exp2_paper_zarr(
+                observation_path=observation_path,
+                nimrod_path=nimrod_path,
+                methods=method_paths,
+                events=cfg.exp2_paper_events,
+                mask_path=mask_path,
+                crop_size=cfg.crop_size,
+                out_dir=exp2_pdf_dir,
+                output_pdf=cfg.exp2_paper_output_pdf,
+                mode=cfg.mode,
+                method_order=method_order,
+                crop_pdf=False,
+                crop_output=cfg.exp2_paper_crop_output,
+                crop_y_ranges=((0.019, 0.5), (0.58, 1.0)),
+                crop_zoom=3.0,
+                crop_margin_left=0.0,
+                crop_margin_right=0.0,
+            )
 
     if cfg.run_exp3:
         exp3_dir = os.path.join(results_root, "exp3")

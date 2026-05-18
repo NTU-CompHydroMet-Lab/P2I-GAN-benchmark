@@ -14,10 +14,10 @@ class ModeConfig:
 
 @dataclass
 class ExperimentConfig:
-    experiment_name: str = "exp12_pm_v3_dkstdk"
-    description: str = "evaluation of DK and STDK methods in different loss functions."
+    experiment_name: str = "exp2_test"
+    description: str = "fix keep method."
     save_dir: str = "results"
-    mode: str = "radar"  # "radar" or "gauge"
+    mode: str = "gauge"  # "radar" or "gauge"
     run_exp1: bool = False
     run_exp2_gif: bool = False
     run_exp2_pdf: bool = True
@@ -28,26 +28,28 @@ class ExperimentConfig:
     gif_fps: int = 6
     exp1_pool8: bool = True
     exp2_paper_output_pdf: str = "two_events_stacked_titles.pdf"
+    exp2_paper_one_event_per_pdf: bool = True
+    exp2_paper_output_template: str = "event_{event_idx:02d}_id_{event_id:02d}.pdf"
     exp2_paper_crop_output: str = "cropped_stitched.pdf"
     exp2_paper_mask_path: Optional[str] = None
-    # exp2_paper_radar_method_order: Tuple[str, ...] = (
-    #     "Radar",
-    #     "P2I-GAN+",
-    #     "P2I-GAN",
-    #     "DK",
-    #     "STDK",
-    #     "OK",
-    #     "RBF",
-    # )
     exp2_paper_radar_method_order: Tuple[str, ...] = (
-        "Obs", 
-        "DK (Full)", 
-        "STDK (Full)", 
-        "DK (w/o pm)", 
-        "STDK (w/o pm)", 
-        "DK (mse loss)", 
-        "STDK (mse loss)",  
+        "Radar",
+        "P2I-GAN+",
+        "P2I-GAN",
+        "DK",
+        "STDK",
+        "OK",
+        "RBF",
     )
+    # exp2_paper_radar_method_order: Tuple[str, ...] = (
+    #     "Obs", 
+    #     "DK (Full)", 
+    #     "STDK (Full)", 
+    #     "DK (w/o pm)", 
+    #     "STDK (w/o pm)", 
+    #     "DK (mse loss)", 
+    #     "STDK (mse loss)",  
+    # )
     exp2_paper_gauge_method_order: Tuple[str, ...] = (
         "Gauge",
         "Radar",
@@ -59,31 +61,56 @@ class ExperimentConfig:
         "KRE",
     )
 
-    exp2_paper_events: Tuple[Dict[str, object], ...] = (
-        {
-            "event_id": 5,
-            "select_idx": (25, 26, 27),
-            "title": "Stratiform . Start Time : 2021-05-20 11:00:00 UTC",
-        },
-        {
-            "event_id": 19,
-            "select_idx": (19, 20, 21),
-            "title": "Convective . Start Time : 2022-10-31 19:35:00 UTC",
-        },
-    )
+    # exp2_paper_events: Tuple[Dict[str, object], ...] = (
+    #     {
+    #         "event_id": 5,
+    #         "select_idx": (25, 26, 27),
+    #         "title": "Stratiform . Start Time : 2021-05-20 11:00:00 UTC",
+    #     },
+    #     {
+    #         "event_id": 19,
+    #         "select_idx": (19, 20, 21),
+    #         "title": "Convective . Start Time : 2022-10-31 19:35:00 UTC",
+    #     },
+    # )
 
     # exp2_paper_events: Tuple[Dict[str, object], ...] = (
     #     {
-    #         "event_id": 4,
-    #         "select_idx": (20, 21, 22),
-    #         "title": "Stratiform . Start Time : 2021-05-08 10:40:00 UTC",
+    #         "event_id": 5,
+    #         "select_idx": (25, 26, 27),
+    #         "title": "Summer . Start Time : 2021-05-20 11:00:00 UTC",
     #     },
     #     {
     #         "event_id": 10,
     #         "select_idx": (26, 27, 28),
-    #         "title": "Convective . Start Time : 2021-12-07 10:10:00 UTC",
+    #         "title": "Winter . Start Time : 2021-12-07 10:10:00 UTC",
     #     },
     # )
+
+    
+    exp2_paper_events: Tuple[Dict[str, object], ...] = (
+        {"event_id": 1, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-01-16 05:30:00 UTC"},
+        {"event_id": 2, "select_idx": [60, 61, 62, 63, 64, 65],
+         "title": "Start Time : 2021-03-10 03:00:00 UTC"},
+        {"event_id": 3, "select_idx": [60, 61, 62, 63, 64, 65],
+         "title": "Start Time : 2021-05-03 13:00:00 UTC"},
+        {"event_id": 4, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-05-08 08:30:00 UTC"},
+        {"event_id": 5, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-05-20 16:30:00 UTC"},
+        {"event_id": 6, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-05-23 18:30:00 UTC"},
+        {"event_id": 7, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-07-06 00:30:00 UTC"},
+        {"event_id": 8, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-10-02 12:30:00 UTC"},
+        {"event_id": 9, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-10-31 10:30:00 UTC"},
+        {"event_id": 10, "select_idx": [90, 91, 92, 93, 94, 95],
+         "title": "Start Time : 2021-12-07 15:30:00 UTC"},
+    )
+
     exp2_paper_folders: Dict[str, str] = field(default_factory=dict)
     data: Dict[str, ModeConfig] = field(default_factory=dict)
 
@@ -95,46 +122,46 @@ def build_config() -> ExperimentConfig:
         nimrod_path=(
             "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/nimrod/nimrod_test.zarr"
         ),
-        methods={
-            "DK (Full)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/dk_v3_pm_nimrod.zarr"
-            ),
-            "STDK (Full)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_nimrod.zarr"
-            ),
-            "DK (w/o pm)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/dk_nimrod.zarr"
-            ),
-            "STDK (w/o pm)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/stdk_nimrod.zarr"
-            ),
-            "DK (mse loss)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/dk_mse_nimrod.zarr"
-            ),
-            "STDK (mse loss)": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/stdk_nimrod.zarr"
-            ),
-        },
         # methods={
-        #     "P2I-GAN+": (
-        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_gan_baseline_v3_pm_nimrod.zarr"
-        #     ),
-        #     "P2I-GAN": (
-        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_baseline_v3_pm_nimrod.zarr"
-        #     ),
-        #     "DK": (
+        #     "DK (Full)": (
         #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/dk_v3_pm_nimrod.zarr"
         #     ),
-        #     "STDK": (
+        #     "STDK (Full)": (
         #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_nimrod.zarr"
         #     ),
-        #     "OK": (
-        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/ok_nimrod.zarr"
+        #     "DK (w/o pm)": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/dk_nimrod.zarr"
         #     ),
-        #     "RBF": (
-        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/rbf_nimrod.zarr"
+        #     "STDK (w/o pm)": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/v2/stdk_nimrod.zarr"
+        #     ),
+        #     "DK (mse loss)": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/dk_mse_nimrod.zarr"
+        #     ),
+        #     "STDK (mse loss)": (
+        #         "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/stdk_nimrod.zarr"
         #     ),
         # },
+        methods={
+            "P2I-GAN+": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_gan_baseline_v3_pm_nimrod.zarr"
+            ),
+            "P2I-GAN": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/p2igan_baseline_v3_pm_nimrod.zarr"
+            ),
+            "DK": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/dk_v3_pm_nimrod.zarr"
+            ),
+            "STDK": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_nimrod.zarr"
+            ),
+            "OK": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/ok_nimrod.zarr"
+            ),
+            "RBF": (
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/rbf_nimrod.zarr"
+            ),
+        },
         mask_train_path=(
             "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/masks/gauge_mask_128_train.txt"
         ),
@@ -164,10 +191,10 @@ def build_config() -> ExperimentConfig:
                 "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/stdk_v3_pm_gauge.zarr"
             ),
             "KRE": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/kre_gauge.zarr"
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/kre_gauge_v2.zarr"
             ),
             "KED": (
-                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/infer/ked_gauge.zarr"
+                "/home/NAS/homes/brick-10015/P2I-GAN-benchmark/datasets/predict/ked_gauge_v2.zarr"
             ),
         },
         mask_train_path=(
